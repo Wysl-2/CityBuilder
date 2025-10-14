@@ -44,7 +44,8 @@ public class PBMeshBuilder
 
     // ---------- public API ----------
 
-    public Face AddTriangleFace(Vector3 a, Vector3 b, Vector3 c, Winding winding = Winding.CW)
+    public Face AddTriangleFace(Vector3 a, Vector3 b, Vector3 c,
+                    Winding winding = Winding.CW, int smoothingGroup = 0, int submeshIndex = 0)
     {
         var faceN = ComputeFaceNormal(a, b, c);
         if (faceN == Vector3.zero) faceN = Vector3.up;
@@ -57,14 +58,18 @@ public class PBMeshBuilder
             ? new[] { i0, i1, i2 }
             : new[] { i0, i2, i1 };
 
-        var f = new Face(tri);
+        var f = new Face(tri)
+        {
+            smoothingGroup = smoothingGroup,
+            submeshIndex = submeshIndex
+        };
         faces.Add(f);
         return f;
     }
 
     /// Quad triangulated either along 0-2 (default) or 1-3.
     public Face AddQuadFace(Vector3 a, Vector3 b, Vector3 c, Vector3 d,
-                            Winding winding = Winding.CW, bool diag02 = true, int smoothingGroup = 0)
+                    Winding winding = Winding.CW, bool diag02 = true, int smoothingGroup = 0, int submeshIndex = 0)
     {
         var faceN = ComputeFaceNormal(a, b, c);
         if (faceN == Vector3.zero) faceN = Vector3.up;
@@ -90,13 +95,14 @@ public class PBMeshBuilder
 
         var f = new Face(new int[] { t0[0], t0[1], t0[2],  t1[0], t1[1], t1[2] })
         {
-            smoothingGroup = smoothingGroup
+            smoothingGroup = smoothingGroup,
+            submeshIndex = submeshIndex
         };
         faces.Add(f);
         return f;
     }
 
-    public ProBuilderMesh Build(GameObject host, Material material = null, bool refresh = true)
+    public ProBuilderMesh Build(Material[] materials = null, bool refresh = true)
     {
         var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
 
@@ -106,8 +112,42 @@ public class PBMeshBuilder
             groups[i] = new SharedVertex(new[] { i });
         pb.sharedVertices = groups;
 
-        if (material) pb.SetMaterial(pb.faces, material);
-        if (refresh) { pb.ToMesh(); pb.Refresh(RefreshMask.All); }
+        // Assign materials based on submeshIndex
+        if (materials != null && materials.Length > 0)
+        {
+            // Group faces by submeshIndex
+            var facesBySubmesh = new Dictionary<int, List<Face>>();
+            foreach (var face in faces)
+            {
+                int submeshIndex = face.submeshIndex;
+                if (!facesBySubmesh.ContainsKey(submeshIndex))
+                    facesBySubmesh[submeshIndex] = new List<Face>();
+                facesBySubmesh[submeshIndex].Add(face);
+            }
+
+            // Assign each submesh a material, if available
+            foreach (var kvp in facesBySubmesh)
+            {
+                int submeshIndex = kvp.Key;
+                var submeshFaces = kvp.Value;
+                Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
+                if (material != null)
+                    pb.SetMaterial(submeshFaces, material);
+                else
+                    Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
+            }
+
+            // Ensure the MeshRenderer has the correct number of materials
+            var renderer = pb.GetComponent<MeshRenderer>();
+            renderer.sharedMaterials = materials;
+        }
+
+        if (refresh)
+        {
+            pb.ToMesh();
+            pb.Refresh(RefreshMask.All);
+        }
+
         return pb;
     }
 

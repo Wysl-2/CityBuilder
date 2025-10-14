@@ -6,39 +6,66 @@ using UnityEngine.ProBuilder.MeshOperations;
 [RequireComponent(typeof(MeshRenderer))]
 public class PBMeshBuilder_Example : MonoBehaviour
 {
-    public Material material;
+    public Material material1;
+    public Material material2;
 
     void Start()
     {
         var builder = new PBMeshBuilder();
 
-        // Quad #1 on XZ plane (y=0), coords (0..1)
+        // Quad Row #1 at Z = 0
         builder.AddQuadFace(
             new Vector3(0, 0, 0),
             new Vector3(1, 0, 0),
             new Vector3(1, 0, 1),
-            new Vector3(0, 0, 1)
+            new Vector3(0, 0, 1),
+            submeshIndex: 0
         );
 
-        // Quad #2 to +X, reuses the middle edge (1,0,0)-(1,0,1) automatically
         builder.AddQuadFace(
             new Vector3(1, 0, 0),
-            new Vector3(1, 1, 0),
-            new Vector3(1, 1, 1),
+            new Vector3(2, 0, 0),
+            new Vector3(2, 0, 1),
             new Vector3(1, 0, 1),
-            Winding.CCW
+            submeshIndex: 0
         );
 
-        builder.AddTriangleFace(
+        builder.AddQuadFace(
+            new Vector3(2, 0, 0),
+            new Vector3(3, 0, 0),
+            new Vector3(3, 0, 1),
+            new Vector3(2, 0, 1),
+            submeshIndex: 0
+        );
+
+        // Quad Row #2 at Z = 1
+        builder.AddQuadFace(
             new Vector3(0, 0, 1),
             new Vector3(1, 0, 1),
-            new Vector3(0.5f, 0, 2)
+            new Vector3(1, 0, 2),
+            new Vector3(0, 0, 2),
+            submeshIndex: 1
         );
 
-        var pb = builder.Build(gameObject, material);
+        builder.AddQuadFace(
+            new Vector3(1, 0, 1),
+            new Vector3(2, 0, 1),
+            new Vector3(2, 0, 2),
+            new Vector3(1, 0, 2),
+            submeshIndex: 1
+        );
 
-        pb.ToMesh();
-        pb.Refresh(RefreshMask.All);
+        builder.AddQuadFace(
+            new Vector3(2, 0, 1),
+            new Vector3(3, 0, 1),
+            new Vector3(3, 0, 2),
+            new Vector3(2, 0, 2),
+            submeshIndex: 1
+        );
+
+        Material[] materials = new Material[] { material1, material2 };
+        var pb = builder.Build(materials);
+
     }
 }
 
