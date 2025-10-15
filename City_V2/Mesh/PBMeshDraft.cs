@@ -1,26 +1,37 @@
+using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.ProBuilder;
 
 public enum Winding { CCW, CW }
 
-/// Dedupes by (position, plane-within-tolerance), collects faces, and builds a ProBuilderMesh.
+/// <summary>
+/// Builds a ProBuilderMesh with vertex deduplication by position (within epsilon) and normal (within tolerance).
+/// Supports UV island control via uvGroup, ensuring vertices are shared within the same uvGroup.
+/// </summary>
 public class PBMeshBuilder
 {
-    private sealed class Vec3Approx : IEqualityComparer<Vector3>
+    private struct PositionGroupKey
+    {
+        public Vector3 Position;
+        public int Group; // Now represents uvGroup
+    }
+
+    private sealed class PositionGroupKeyComparer : IEqualityComparer<PositionGroupKey>
     {
         private readonly float eps;
-        public Vec3Approx(float epsilon) => eps = Mathf.Max(1e-9f, epsilon);
-        public bool Equals(Vector3 a, Vector3 b) =>
-            Mathf.Abs(a.x - b.x) <= eps &&
-            Mathf.Abs(a.y - b.y) <= eps &&
-            Mathf.Abs(a.z - b.z) <= eps;
-        public int GetHashCode(Vector3 v)
+        public PositionGroupKeyComparer(float epsilon) => eps = Mathf.Max(1e-9f, epsilon);
+        public bool Equals(PositionGroupKey a, PositionGroupKey b) =>
+            a.Group == b.Group &&
+            Mathf.Abs(a.Position.x - b.Position.x) <= eps &&
+            Mathf.Abs(a.Position.y - b.Position.y) <= eps &&
+            Mathf.Abs(a.Position.z - b.Position.z) <= eps;
+        public int GetHashCode(PositionGroupKey v)
         {
-            int xi = Mathf.RoundToInt(v.x / eps);
-            int yi = Mathf.RoundToInt(v.y / eps);
-            int zi = Mathf.RoundToInt(v.z / eps);
-            return xi * 73856093 ^ yi * 19349663 ^ zi * 83492791;
+            int xi = Mathf.RoundToInt(v.Position.x / eps);
+            int yi = Mathf.RoundToInt(v.Position.y / eps);
+            int zi = Mathf.RoundToInt(v.Position.z / eps);
+            return (xi * 73856093 ^ yi * 19349663 ^ zi * 83492791) ^ v.Group.GetHashCode();
         }
     }
 
@@ -28,31 +39,69 @@ public class PBMeshBuilder
 
     private readonly float posEpsilon;
     private readonly float normalTolCos;
-    private readonly Dictionary<Vector3, List<NormalBin>> bins;
+    private readonly Dictionary<PositionGroupKey, List<NormalBin>> bins;
     private readonly List<Vector3> positions = new();
     private readonly List<Face> faces = new();
+    // Track which uvGroups use each vertex to apply disconnectedVertices at boundaries
+    private readonly Dictionary<int, HashSet<int>> vertexToUvGroups = new();
 
     public IReadOnlyList<Vector3> Positions => positions;
     public IReadOnlyList<Face> Faces => faces;
 
-    public PBMeshBuilder(float positionEpsilon = 1e-5f, float normalToleranceDegrees = 1f)
+    public PBMeshBuilder(float positionEpsilon = 1e-5f, float normalToleranceDegrees = 5f)
     {
+        if (positionEpsilon <= 0 || positionEpsilon > 0.1f)
+            throw new ArgumentException("positionEpsilon must be positive and reasonable (e.g., <= 0.1)", nameof(positionEpsilon));
         posEpsilon = positionEpsilon;
         normalTolCos = Mathf.Cos(Mathf.Deg2Rad * Mathf.Max(0f, normalToleranceDegrees));
-        bins = new Dictionary<Vector3, List<NormalBin>>(new Vec3Approx(positionEpsilon));
+        bins = new Dictionary<PositionGroupKey, List<NormalBin>>(new PositionGroupKeyComparer(positionEpsilon));
     }
 
-    // ---------- public API ----------
-
-    public Face AddTriangleFace(Vector3 a, Vector3 b, Vector3 c,
-                    Winding winding = Winding.CW, int smoothingGroup = 0, int submeshIndex = 0)
+    /// <summary>
+    /// Clears internal state for reuse.
+    /// </summary>
+    public void Clear()
     {
-        var faceN = ComputeFaceNormal(a, b, c);
-        if (faceN == Vector3.zero) faceN = Vector3.up;
+        bins.Clear();
+        positions.Clear();
+        faces.Clear();
+        vertexToUvGroups.Clear();
+    }
 
-        int i0 = AddVertex(a, faceN);
-        int i1 = AddVertex(b, faceN);
-        int i2 = AddVertex(c, faceN);
+    /// <summary>
+    /// Adds a triangle face with optional UV seam control.
+    /// </summary>
+    /// <param name="disconnectedVertices">Vertex indices (0-2) to isolate for UV seams at uvGroup boundaries.</param>
+    /// <param name="uvGroup">UV island group; vertices are shared within the same uvGroup if normals match.</param>
+    public Face AddTriangleFace(Vector3 a, Vector3 b, Vector3 c,
+                    Winding winding = Winding.CW, int smoothingGroup = 0, int submeshIndex = 0,
+                    int[] disconnectedVertices = null, int uvGroup = 0)
+    {
+        if (smoothingGroup < 0) Debug.LogWarning($"Negative smoothingGroup {smoothingGroup} may be invalid.");
+        if (submeshIndex < 0) Debug.LogWarning($"Negative submeshIndex {submeshIndex} may be invalid.");
+
+        var faceN = ComputeFaceNormal(a, b, c);
+        if (faceN == Vector3.zero)
+        {
+            Debug.LogWarning("Degenerate triangle detected; using default normal (0,1,0).");
+            faceN = Vector3.up;
+        }
+
+        bool[] isDisconnected = new bool[3];
+        if (disconnectedVertices != null)
+        {
+            foreach (int vIdx in disconnectedVertices)
+            {
+                if (vIdx >= 0 && vIdx < 3)
+                    isDisconnected[vIdx] = true;
+                else
+                    Debug.LogWarning($"Invalid disconnected vertex index {vIdx} for triangle face.");
+            }
+        }
+
+        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup);
+        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup);
+        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup);
 
         int[] tri = (winding == Winding.CCW)
             ? new[] { i0, i1, i2 }
@@ -67,33 +116,53 @@ public class PBMeshBuilder
         return f;
     }
 
-    /// Quad triangulated either along 0-2 (default) or 1-3.
+    /// <summary>
+    /// Adds a quad face, triangulated along 0-2 or 1-3, with optional UV seam control.
+    /// </summary>
+    /// <param name="disconnectedVertices">Vertex indices (0-3) to isolate for UV seams at uvGroup boundaries.</param>
+    /// <param name="uvGroup">UV island group; vertices are shared within the same uvGroup if normals match.</param>
     public Face AddQuadFace(Vector3 a, Vector3 b, Vector3 c, Vector3 d,
-                    Winding winding = Winding.CW, bool diag02 = true, int smoothingGroup = 0, int submeshIndex = 0)
+                    Winding winding = Winding.CW, bool diag02 = true, int smoothingGroup = 0, int submeshIndex = 0,
+                    int[] disconnectedVertices = null, int uvGroup = 0)
     {
-        var faceN = ComputeFaceNormal(a, b, c);
-        if (faceN == Vector3.zero) faceN = Vector3.up;
+        if (smoothingGroup < 0) Debug.LogWarning($"Negative smoothingGroup {smoothingGroup} may be invalid.");
+        if (submeshIndex < 0) Debug.LogWarning($"Negative submeshIndex {submeshIndex} may be invalid.");
 
-        int i0 = AddVertex(a, faceN);
-        int i1 = AddVertex(b, faceN);
-        int i2 = AddVertex(c, faceN);
-        int i3 = AddVertex(d, faceN);
+        var n1 = ComputeFaceNormal(a, b, c);
+        var n2 = ComputeFaceNormal(a, c, d);
+        var faceN = ((n1 + n2).normalized.sqrMagnitude > 0f) ? (n1 + n2).normalized : Vector3.up;
+        if (faceN == Vector3.up) Debug.LogWarning("Degenerate quad detected; using default normal (0,1,0).");
+
+        bool[] isDisconnected = new bool[4];
+        if (disconnectedVertices != null)
+        {
+            foreach (int vIdx in disconnectedVertices)
+            {
+                if (vIdx >= 0 && vIdx < 4)
+                    isDisconnected[vIdx] = true;
+                else
+                    Debug.LogWarning($"Invalid disconnected vertex index {vIdx} for quad face.");
+            }
+        }
+
+        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup);
+        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup);
+        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup);
+        int i3 = AddVertex(d, faceN, isDisconnected[3], uvGroup);
 
         int[] t0, t1;
         if (diag02)
         {
-            // CCW: (0,1,2) & (0,2,3)
             t0 = (winding == Winding.CCW) ? new[] { i0, i1, i2 } : new[] { i0, i2, i1 };
             t1 = (winding == Winding.CCW) ? new[] { i0, i2, i3 } : new[] { i0, i3, i2 };
         }
         else
         {
-            // CCW: (0,1,3) & (1,2,3)
             t0 = (winding == Winding.CCW) ? new[] { i0, i1, i3 } : new[] { i0, i3, i1 };
             t1 = (winding == Winding.CCW) ? new[] { i1, i2, i3 } : new[] { i1, i3, i2 };
         }
 
-        var f = new Face(new int[] { t0[0], t0[1], t0[2],  t1[0], t1[1], t1[2] })
+        var f = new Face(new int[] { t0[0], t0[1], t0[2], t1[0], t1[1], t1[2] })
         {
             smoothingGroup = smoothingGroup,
             submeshIndex = submeshIndex
@@ -102,30 +171,31 @@ public class PBMeshBuilder
         return f;
     }
 
+    /// <summary>
+    /// Builds and returns a ProBuilderMesh with the collected vertices and faces.
+    /// </summary>
     public ProBuilderMesh Build(Material[] materials = null, bool refresh = true)
     {
         var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
 
-        // Identity shared groups: keep same-position/different-plane verts distinct.
         var groups = new SharedVertex[positions.Count];
         for (int i = 0; i < positions.Count; i++)
             groups[i] = new SharedVertex(new[] { i });
         pb.sharedVertices = groups;
 
-        // Assign materials based on submeshIndex
         if (materials != null && materials.Length > 0)
         {
-            // Group faces by submeshIndex
             var facesBySubmesh = new Dictionary<int, List<Face>>();
             foreach (var face in faces)
             {
                 int submeshIndex = face.submeshIndex;
+                if (submeshIndex >= materials.Length)
+                    Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
                 if (!facesBySubmesh.ContainsKey(submeshIndex))
                     facesBySubmesh[submeshIndex] = new List<Face>();
                 facesBySubmesh[submeshIndex].Add(face);
             }
 
-            // Assign each submesh a material, if available
             foreach (var kvp in facesBySubmesh)
             {
                 int submeshIndex = kvp.Key;
@@ -137,7 +207,6 @@ public class PBMeshBuilder
                     Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
             }
 
-            // Ensure the MeshRenderer has the correct number of materials
             var renderer = pb.GetComponent<MeshRenderer>();
             renderer.sharedMaterials = materials;
         }
@@ -148,10 +217,10 @@ public class PBMeshBuilder
             pb.Refresh(RefreshMask.All);
         }
 
+        bins.Clear();
+        vertexToUvGroups.Clear();
         return pb;
     }
-
-    // ---------- internals ----------
 
     private static Vector3 ComputeFaceNormal(in Vector3 a, in Vector3 b, in Vector3 c)
     {
@@ -160,28 +229,42 @@ public class PBMeshBuilder
         return (mag > 1e-20f) ? (n / mag) : Vector3.zero;
     }
 
-    // Weld only when planes are parallel (±n) within tolerance.
-    private int AddVertex(Vector3 p, Vector3 faceNormal)
+    private int AddVertex(Vector3 p, Vector3 faceNormal, bool forceNew, int uvGroup)
     {
         var n = (faceNormal.sqrMagnitude > 0f) ? faceNormal.normalized : Vector3.up;
+        var key = new PositionGroupKey { Position = p, Group = uvGroup }; // Always use uvGroup
 
-        if (!bins.TryGetValue(p, out var list))
+        if (!bins.TryGetValue(key, out var list))
         {
             list = new List<NormalBin>();
-            bins[p] = list;
+            bins[key] = list;
         }
 
         for (int i = 0; i < list.Count; i++)
         {
             var b = list[i];
-            // abs(dot) → consider ±n parallel (same plane regardless of CW/CCW)
             if (Mathf.Abs(Vector3.Dot(b.n, n)) >= normalTolCos)
+            {
+                // Check if this vertex is shared across different uvGroups and needs disconnection
+                if (forceNew && vertexToUvGroups.TryGetValue(b.index, out var groups) && groups.Contains(uvGroup))
+                {
+                    // Vertex is used by this uvGroup; share unless explicitly disconnected across groups
+                    if (groups.Count > 1) continue; // Used by other uvGroups, force new vertex
+                    return b.index; // Safe to share within this uvGroup
+                }
                 return b.index;
+            }
         }
 
         int idx = positions.Count;
         positions.Add(p);
         list.Add(new NormalBin { n = n, index = idx });
+
+        // Track uvGroup usage for this vertex
+        if (!vertexToUvGroups.ContainsKey(idx))
+            vertexToUvGroups[idx] = new HashSet<int>();
+        vertexToUvGroups[idx].Add(uvGroup);
+
         return idx;
     }
 }
