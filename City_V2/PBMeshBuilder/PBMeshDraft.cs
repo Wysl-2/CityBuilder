@@ -48,13 +48,17 @@ public class PBMeshBuilder
     public IReadOnlyList<Vector3> Positions => positions;
     public IReadOnlyList<Face> Faces => faces;
 
-    public PBMeshBuilder(float positionEpsilon = 1e-5f, float normalToleranceDegrees = 5f)
+    // Authoring tag
+    public IFaceSink? Sink { get; set; }
+
+    public PBMeshBuilder(float positionEpsilon = 1e-5f, float normalToleranceDegrees = 5f, IFaceSink? sink = null)
     {
         if (positionEpsilon <= 0 || positionEpsilon > 0.1f)
             throw new ArgumentException("positionEpsilon must be positive and reasonable (e.g., <= 0.1)", nameof(positionEpsilon));
         posEpsilon = positionEpsilon;
         normalTolCos = Mathf.Cos(Mathf.Deg2Rad * Mathf.Max(0f, normalToleranceDegrees));
         bins = new Dictionary<PositionGroupKey, List<NormalBin>>(new PositionGroupKeyComparer(positionEpsilon));
+        Sink = sink;
     }
 
     /// <summary>
@@ -113,7 +117,27 @@ public class PBMeshBuilder
             submeshIndex = submeshIndex
         };
         faces.Add(f);
+
+        Sink?.OnFaceAdded(FaceType.Tri, new[] { a, b, c }, winding, tri);
+
         return f;
+    }
+    // -- Method Overloads
+    /// <param name="vertices">Array of 4 vertices in order: bottom-left, bottom-right, top-right, top-left (e.g., (0,0,0), (1,0,0), (1,0,1), (0,0,1) for XZ quad).</param>
+    public Face AddTriangleFace(Vector3[] vertices, Winding winding = Winding.CW,
+                int smoothingGroup = 0, int submeshIndex = 0, int[] disconnectedVertices = null, int uvGroup = 0)
+    {
+        if (vertices == null || vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(vertices));
+        // Forward vertices to original method
+        return AddTriangleFace(vertices[0], vertices[1], vertices[2], winding,
+                                smoothingGroup, submeshIndex, disconnectedVertices, uvGroup);
+    }
+       public Face AddTriangleFace(Triangle tri)
+    {
+        if (tri.Vertices == null || tri.Vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(tri.Vertices));
+        // Forward to original method
+        return AddTriangleFace(tri.Vertices[0], tri.Vertices[1], tri.Vertices[2], tri.Winding,
+                            tri.SmoothingGroup, tri.SubmeshIndex, tri.DisconnectedVertices, tri.UVGroup);
     }
 
     /// <summary>
@@ -168,15 +192,40 @@ public class PBMeshBuilder
             submeshIndex = submeshIndex
         };
         faces.Add(f);
+
+        Sink?.OnFaceAdded(FaceType.Quad, new[] { a, b, c, d }, winding, new[] { i0, i1, i2, i3 });
+
         return f;
+    }
+    // -- Method Overloads
+    public Face AddQuadFace(Vector3[] vertices, Winding winding = Winding.CW, bool diag02 = true,
+                    int smoothingGroup = 0, int submeshIndex = 0, int[] disconnectedVertices = null, int uvGroup = 0)
+    {
+        if (vertices == null || vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(vertices));
+        // Forward to original method
+        return AddQuadFace(vertices[0], vertices[1], vertices[2], vertices[3], winding, diag02,
+                    smoothingGroup, submeshIndex, disconnectedVertices, uvGroup);
+    }
+    public Face AddQuadFace(Quad quad)
+    {
+        if (quad.Vertices == null || quad.Vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(quad.Vertices));
+        // Forward to original method
+        return AddQuadFace(quad.Vertices[0], quad.Vertices[1], quad.Vertices[2], quad.Vertices[3], quad.Winding, quad.Diag02,
+                            quad.SmoothingGroup, quad.SubmeshIndex, quad.DisconnectedVertices, quad.UVGroup);
     }
 
     /// <summary>
     /// Builds and returns a ProBuilderMesh with the collected vertices and faces.
     /// </summary>
-    public ProBuilderMesh Build(Material[] materials = null, bool refresh = true)
+    public ProBuilderMesh Build(Material[] materials = null, Transform parent = null, bool refresh = true)
     {
         var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
+
+        if(parent != null)
+        {
+            var t = pb.transform;
+            t.SetParent(parent);
+        }
 
         var groups = new SharedVertex[positions.Count];
         for (int i = 0; i < positions.Count; i++)
@@ -266,5 +315,189 @@ public class PBMeshBuilder
         vertexToUvGroups[idx].Add(uvGroup);
 
         return idx;
+    }
+}
+
+public struct Quad
+{
+    public Vector3[] Vertices { get; set; }
+    public Winding Winding { get; }
+    public bool Diag02 { get; }
+    public int SubmeshIndex { get; }
+    public int SmoothingGroup { get; }
+    public int UVGroup { get; }
+    public int[] DisconnectedVertices { get; }
+
+    /// <summary>
+    /// Creates a quad with specified vertices and properties.
+    /// </summary>
+    public Quad(Vector3[] vertices, Winding winding = Winding.CW, bool diag02 = true, int submeshIndex = 0, int smoothingGroup = 0, int uvGroup = 0, int[] disconnectedVertices = null)
+    {
+        if (vertices == null || vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(vertices));
+
+        Vertices = vertices;
+        Winding = winding;
+        Diag02 = diag02;
+        SubmeshIndex = submeshIndex;
+        SmoothingGroup = smoothingGroup;
+        UVGroup = uvGroup;
+        DisconnectedVertices = disconnectedVertices;
+    }
+
+    public Vector3[] ExtrudeEdge(int edgeIndex, Vector3 direction, float distance)
+    {
+        if (edgeIndex < 0 || edgeIndex > 3)
+            throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
+        if (direction == Vector3.zero)
+            throw new ArgumentException("Direction cannot be zero.", nameof(direction));
+
+        Vector3 a = Vertices[edgeIndex];
+        Vector3 b = Vertices[(edgeIndex + 1) % 4];
+        Vector3 c = a + direction.normalized * distance;
+        Vector3 d = b + direction.normalized * distance;
+
+        if (Winding == Winding.CW)
+            return new Vector3[] { a, c, d, b }; // Fixed: v0, v0+offset, v1+offset, v1
+        else
+            return new Vector3[] { a, b, d, c }; // CCW: v0, v1, v1+offset, v0+offset
+    }
+
+    public Vector3[] ExtrudeEdgeOffset(int edgeIndex, Vector3 offset)
+    {
+        if (edgeIndex < 0 || edgeIndex > 3)
+            throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
+
+        Vector3 a = Vertices[edgeIndex];
+        Vector3 b = Vertices[(edgeIndex + 1) % 4];
+        Vector3 a2 = a + offset;
+        Vector3 b2 = b + offset;
+
+        return (Winding == Winding.CW)
+            ? new[] { a, a2, b2, b }
+            : new[] { a, b, b2, a2 };
+    }
+
+    public Vector3[] ExtrudeEdgeOutAndVertical(
+    int edgeIndex,
+    Vector3 outward,
+    float outDistance,
+    float verticalAmount,
+    Vector3 upAxis = default)
+    {
+        if (edgeIndex < 0 || edgeIndex > 3)
+            throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
+
+        if (upAxis == default) upAxis = Vector3.up;
+        var up = upAxis.normalized;
+
+        // Project outward onto plane perpendicular to up so it's purely horizontal
+        var outwardProj = outward - Vector3.Dot(outward, up) * up;
+        var sqrMag = outwardProj.sqrMagnitude;
+        if (sqrMag < 1e-12f)
+            throw new ArgumentException("Outward must have a non-zero horizontal component.", nameof(outward));
+
+        var outDir = outwardProj / Mathf.Sqrt(sqrMag);
+
+        // Edge endpoints (top edge)
+        Vector3 a = Vertices[edgeIndex];
+        Vector3 b = Vertices[(edgeIndex + 1) % 4];
+
+        // Build the offset (horizontal out + vertical)
+        Vector3 offset = outDir * outDistance + up * verticalAmount;
+
+        // Bottom edge (extruded)
+        Vector3 a2 = a + offset;
+        Vector3 b2 = b + offset;
+
+        // Match your existing winding convention for side faces
+        if (Winding == Winding.CW)
+            return new[] { a, a2, b2, b };   // t0, b0, b1, t1
+        else
+            return new[] { a, b, b2, a2 };   // t0, t1, b1, b0
+    }
+
+    /// <summary>
+    /// Convenience: extrude "out and DOWN" by positive distances (downAmount >= 0).
+    /// Equivalent to ExtrudeEdgeOutAndVertical(edgeIndex, outward, outAmount, -downAmount).
+    /// </summary>
+    public Vector3[] ExtrudeEdgeOutDown(
+        int edgeIndex,
+        Vector3 outward,
+        float outAmount,
+        float downAmount,
+        Vector3 upAxis = default)
+    {
+        if (downAmount < 0f)
+            throw new ArgumentException("downAmount should be non-negative; use ExtrudeEdgeOutAndVertical for signed values.", nameof(downAmount));
+
+        return ExtrudeEdgeOutAndVertical(edgeIndex, outward, outAmount, -downAmount, upAxis);
+    }
+
+public Vector3[] ExtrudeEdgeOutHeight(int edgeIndex, float outAmount, float heightAmount)
+{
+    if (edgeIndex < 0 || edgeIndex > 3)
+        throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
+
+    // Edge endpoints
+    Vector3 a = Vertices[edgeIndex];
+    Vector3 b = Vertices[(edgeIndex + 1) % 4];
+
+    // Face normal (from the first three vertices as stored).
+    // This may point up or down depending on Winding; that's fine—we use it consistently.
+    Vector3 n = Vector3.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0]);
+    float nLen = n.magnitude;
+    if (nLen < 1e-12f) throw new InvalidOperationException("Degenerate quad: normal is zero.");
+    n /= nLen;
+
+    // Edge (boundary) direction
+    Vector3 t = b - a;
+    float tLen = t.magnitude;
+    if (tLen < 1e-12f) throw new InvalidOperationException("Degenerate edge: zero length.");
+    t /= tLen;
+
+    // Outward in the quad's plane, away from polygon interior.
+    // For a CCW polygon, outward = cross(n, t). For CW, outward = cross(t, n).
+    Vector3 outward = (Winding == Winding.CCW) ? Vector3.Cross(n, t) : Vector3.Cross(t, n);
+    float oLen = outward.magnitude;
+    if (oLen < 1e-12f) throw new InvalidOperationException("Cannot compute outward direction (degenerate).");
+    outward /= oLen;
+
+    // Final offset for the extrusion
+    Vector3 offset = outward * outAmount + n * heightAmount;
+
+    // Bottom edge (extruded)
+    Vector3 a2 = a + offset;
+    Vector3 b2 = b + offset;
+
+    // Return with ordering consistent with this quad's Winding
+    return (Winding == Winding.CW)
+        ? new[] { a, a2, b2, b }   // t0, b0, b1, t1
+        : new[] { a, b, b2, a2 };  // t0, t1, b1, b0
+}
+
+}
+
+public struct Triangle
+{
+    public Vector3[] Vertices;
+    public Winding Winding;
+    public int SubmeshIndex;
+    public int SmoothingGroup;
+    public int UVGroup;
+    public int[] DisconnectedVertices { get; }
+
+    /// <summary>
+    /// Creates a triangle with specified vertices and properties.
+    /// </summary>
+    public Triangle(Vector3[] vertices, Winding winding = Winding.CW, int submeshIndex = 0, int smoothingGroup = 0, int uvGroup = 0, int[] disconnectedVertices = null)
+    {
+        if (vertices == null || vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(vertices));
+
+        Vertices = vertices;
+        Winding = winding;
+        SubmeshIndex = submeshIndex;
+        SmoothingGroup = smoothingGroup;
+        UVGroup = uvGroup;
+        DisconnectedVertices = disconnectedVertices;
     }
 }

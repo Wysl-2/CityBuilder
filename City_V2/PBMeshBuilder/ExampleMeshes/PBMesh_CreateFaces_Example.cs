@@ -4,7 +4,7 @@ using UnityEngine.ProBuilder.MeshOperations;
 
 [RequireComponent(typeof(MeshFilter))]
 [RequireComponent(typeof(MeshRenderer))]
-public class PBMeshBuilder_Example : MonoBehaviour
+public class PBMeshBuilder_Example_CreateFaces : MonoBehaviour
 {
     public Material material1;
     public Material material2;
@@ -20,7 +20,7 @@ public class PBMeshBuilder_Example : MonoBehaviour
         new Vector3(1, 0, 1),  // v2
         new Vector3(0, 0, 1),  // v3
         submeshIndex: 0,
-        disconnectedVertices: new[] { 1, 2, 3 }, // Disconnect verts at Z=1: (1,0,1), (0,0,1)
+        disconnectedVertices: new[] { 2, 3 }, // Disconnect verts at Z=1: (1,0,1), (0,0,1)
         uvGroup: 0
     );
 
@@ -52,7 +52,7 @@ public class PBMeshBuilder_Example : MonoBehaviour
         new Vector3(1, 0, 2),  // v2
         new Vector3(0, 0, 2),  // v3
         submeshIndex: 1,
-        //disconnectedVertices: new[] { 1, 2 }, // Disconnect verts at X=1: (1,0,1), (1,0,2)
+        disconnectedVertices: new[] { 0, 1 }, // Disconnect verts at X=1: (1,0,1), (1,0,2)
         uvGroup: 0
     );
 
