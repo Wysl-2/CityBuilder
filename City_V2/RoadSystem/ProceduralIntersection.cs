@@ -64,6 +64,8 @@ public class ProceduralIntersection : MonoBehaviour
         FootpathModule.CreateFootpath(builder, transform, Model, Side.North);
         FootpathModule.CreateFootpath(builder, transform, Model, Side.West);
 
+        RoadFillModule.CreateRoadFill(builder, Model, transform);
+
         Material[] materials = new Material[] { material };
         builder.Build(materials, this.transform);
 
@@ -149,6 +151,8 @@ public sealed class IntersectionModel
         FootNorth = InitFootpathModel(Side.North);
         FootWest = InitFootpathModel(Side.West);
         WireUpFootpathAdjacency();
+
+        
 
 
     }
@@ -817,7 +821,7 @@ public static class FootpathModule
         var fp = model.GetFootpath(side);
         if (!fp.exists) return;
 
-        var geo  = fp.geometry;
+        var geo = fp.geometry;
         var curb = geo.curb;
 
         // ---- Compute extends from corners (your existing logic) ---------------
@@ -830,16 +834,16 @@ public static class FootpathModule
         float tL = fp.leftCorner.exists || fp.leftAdjExists ? ParamAlongEdge(fp, fp.leftCorner.apex) : 0f;
         float tR = fp.rightCorner.exists || fp.rightAdjExists ? ParamAlongEdge(fp, fp.rightCorner.apex) : fp.edgeLength;
 
-        float mid         = fp.edgeMid;
-        float leftExtend  = Mathf.Max(0f, mid - tL);
-        float rightExtend = Mathf.Max(0f, tR  - mid);
+        float mid = fp.edgeMid;
+        float leftExtend = Mathf.Max(0f, mid - tL);
+        float rightExtend = Mathf.Max(0f, tR - mid);
 
         float xL = mid - leftExtend;
         float xR = mid + rightExtend;
 
         float z0 = 0f;                 // outer edge
         float z1 = geo.depth;          // inner edge toward roadway
-        float y  = 0f;                 // build at y=0; world Y comes from final translation
+        float y = 0f;                 // build at y=0; world Y comes from final translation
 
         // ---- 0) Footpath slab (canonical; +Z points inward) -------------------
         var pathBase = new Quad(new[]
@@ -872,7 +876,7 @@ public static class FootpathModule
         float join = curb.skirtOut + curb.gutterWidth;
 
         // Heuristic for “outward corner”: corner geometry absent but adjacent footpath exists.
-        bool extendLeftSide  = fp.leftAdjExists;
+        bool extendLeftSide = fp.leftAdjExists;
         bool extendRightSide = fp.rightAdjExists;
 
         // Copy the slab verts & push only the X on the sides that need joining.
@@ -899,7 +903,7 @@ public static class FootpathModule
         };
 
         var (rotY, tx) = PlacementFor(side, model.Size);
-        var rotated     = VertexOperations.RotateMany(sets, new Vector3(0f, rotY, 0f), Vector3.zero);
+        var rotated = VertexOperations.RotateMany(sets, new Vector3(0f, rotY, 0f), Vector3.zero);
         var placedLocal = VertexOperations.TranslateMany(rotated, tx);
         var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
 
@@ -912,11 +916,62 @@ public static class FootpathModule
     // Match CornerModule’s convention (clockwise/negative yaw & same translations)
     private static (float rotYdeg, Vector3 tx) PlacementFor(Side side, Vector2 size) => side switch
     {
-        Side.South => (   0f, new Vector3(0f,     0f, 0f)),
-        Side.East  => ( -90f, new Vector3(size.x, 0f, 0f)),
+        Side.South => (0f, new Vector3(0f, 0f, 0f)),
+        Side.East => (-90f, new Vector3(size.x, 0f, 0f)),
         Side.North => (-180f, new Vector3(size.x, 0f, size.y)),
-        _          => (-270f, new Vector3(0f,     0f, size.y)), // West
+        _ => (-270f, new Vector3(0f, 0f, size.y)), // West
     };
+}
+
+public static class RoadFillModule
+{
+    // CCW quad on xz at y
+    private static Vector3[] QuadXZ(float x0, float x1, float z0, float z1, float y)
+    {
+        // Order to get up-facing normals: NE, NW, SW, SE (consistent with your plaza)
+        return new[]
+        {
+            new Vector3(x1, y, z1), // NE
+            new Vector3(x0, y, z1), // NW
+            new Vector3(x0, y, z0), // SW
+            new Vector3(x1, y, z0), // SE
+        };
+    }
+
+    public static void CreateRoadFill(PBMeshBuilder builder, IntersectionModel m, Transform t)
+    {
+        // Inner offsets from each boundary using apexes (works for both inward/outward corners)
+        float xL = Mathf.Max(m.CornerSW.apex.x, m.CornerNW.apex.x);
+        float xR = Mathf.Min(m.CornerSE.apex.x, m.CornerNE.apex.x);
+        float zB = Mathf.Max(m.CornerSW.apex.z, m.CornerSE.apex.z);
+        float zT = Mathf.Min(m.CornerNW.apex.z, m.CornerNE.apex.z);
+        float RH = m.RoadHeight;
+
+        // Guard: degenerate cases (can happen with tiny configs or extreme values)
+        if (xL >= xR || zB >= zT)
+        {
+            Debug.LogWarning($"RoadFill degenerate rectangle: xL={xL} xR={xR} zB={zB} zT={zT}");
+            return;
+        }
+
+        var faces = new List<Vector3[]>();
+
+        // 1) Center rectangle (Plaza core) — always present
+        faces.Add(QuadXZ(xL, xR, zB, zT, RH));
+
+        // 2) Edge bands only where a road connects to the outside world.
+        // They extend to the boundary but exclude the corner squares.
+        if (m.ConnectedSouth) faces.Add(QuadXZ(xL, xR, 0f, zB, RH));           // South band
+        if (m.ConnectedNorth) faces.Add(QuadXZ(xL, xR, zT, m.Size.y, RH));     // North band
+        if (m.ConnectedWest)  faces.Add(QuadXZ(0f, xL, zB, zT, RH));           // West band
+        if (m.ConnectedEast)  faces.Add(QuadXZ(xR, m.Size.x, zB, zT, RH));     // East band
+
+        // Place (no rotation needed; apexes are already in intersection-local)
+        var placed = VertexOperations.TranslateMany(faces.ToArray(), t.position);
+
+        foreach (var f in placed)
+            builder.AddQuadFace(f);
+    }
 }
 
 // --- Topology Util ---
@@ -965,6 +1020,66 @@ public static class Topology
             CornerId.NW => (Side.North, Side.West),
             _ => throw new System.ArgumentOutOfRangeException(nameof(id), id, null)
         };
+    }
+}
+
+public readonly struct RoadOrientation
+{
+    public readonly float yawDeg;
+    public readonly bool mirror; // kept for future-proofing; not used now
+
+    public RoadOrientation(float yawDeg, bool mirror = false)
+    {
+        // normalize to [-180, 180) for sanity
+        yawDeg = Mathf.Repeat(yawDeg + 180f, 360f) - 180f;
+        this.yawDeg = yawDeg;
+        this.mirror = mirror;
+    }
+}
+
+public static class RoadOrientationUtil
+{
+    // Map actual connections -> yaw that rotates CANONICAL to ACTUAL.
+    public static RoadOrientation OrientationFor(bool N, bool E, bool S, bool W)
+    {
+        int cnt = (N ? 1 : 0) + (E ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0);
+
+        switch (cnt)
+        {
+            case 0: // Plaza
+                return new RoadOrientation(0f);
+
+            case 1: // DeadEnd: canonical = S connected
+                if (S) return new RoadOrientation(0f);     // canonical
+                if (E) return new RoadOrientation(-90f);
+                if (N) return new RoadOrientation(-180f);
+                /*W*/ return new RoadOrientation(-270f);
+
+            case 2:
+                // Either "I" (opposites) or "L" (adjacent)
+                if ((N && S) && !(E || W))
+                    return new RoadOrientation(0f);        // I canonical: N+S
+                if ((E && W) && !(N || S))
+                    return new RoadOrientation(-90f);      // rotate vertical to horizontal
+
+                // L-shape canonical = S+E
+                if (S && E) return new RoadOrientation(0f);      // canonical
+                if (E && N) return new RoadOrientation(-90f);
+                if (N && W) return new RoadOrientation(-180f);
+                /*W && S*/ return new RoadOrientation(-270f);
+
+            case 3: // T-shape canonical = S+E+W (missing N)
+                if (!N) return new RoadOrientation(0f);          // canonical
+                if (!W) return new RoadOrientation(-90f);         // missing W => rotate 90 cw
+                if (!S) return new RoadOrientation(-180f);        // missing S
+                /* !E */ return new RoadOrientation(-270f);       // missing E
+
+            case 4: // X
+                return new RoadOrientation(0f);
+
+            default:
+                return new RoadOrientation(0f);
+        }
     }
 }
 
