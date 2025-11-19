@@ -1,0 +1,33 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: c5c50892f86ea59408949038d5aa63af, type: 3}
+  m_Name: RoadSystemConfig
+  m_EditorClassIdentifier: Assembly-CSharp::RoadSystemConfig
+  roadHeight: -0.15
+  curb:
+    skirtOut: 0.35
+    skirtDown: 0.05
+    gutterDepth: 0.175
+    gutterWidth: 0.5
+  defaultCornerSizes:
+    SW:
+      xSize: 3
+      zSize: 3
+    SE:
+      xSize: 3
+      zSize: 3
+    NE:
+      xSize: 3
+      zSize: 3
+    NW:
+      xSize: 3
+      zSize: 3

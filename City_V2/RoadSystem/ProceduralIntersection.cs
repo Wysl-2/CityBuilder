@@ -1,29 +1,21 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using JetBrains.Annotations;
-using MeshBuilder.Primitives;
-using Unity.VisualScripting;
 using UnityEngine;
 using UnityEngine.ProBuilder;
-using UnityEngine.ProBuilder.MeshOperations;
 
-public enum Side { South, East, North, West }
-public enum CornerId { SW, SE, NE, NW }
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
-public enum CornerType
-{
-    InwardFacing,   // both adjacent sides are connected (roads)
-    OutwardFacing   // both adjacent sides are NOT connected (footpaths)
-}
 
 public class ProceduralIntersection : MonoBehaviour
 {
     public Material material;
+
     [Header("Dimensions")]
     public Vector2 Size;
-    public float RoadHeight;
+    public float   RoadHeight;
+
     [Header("Connections")]
     public bool ConnectedNorth;
     public bool ConnectedSouth;
@@ -32,25 +24,34 @@ public class ProceduralIntersection : MonoBehaviour
 
     [Header("Intersection Profile Settings")]
     public IntersectionGeometryConfig intersectionConfig = IntersectionGeometryConfig.Default();
-    public IntersectionModel Model;
 
-    void OnValidate()
+    // in ProceduralIntersection.cs (inside class)
+    [Header("Shared Defaults & Overrides")]
+    [SerializeField] private bool overrideCornerSizes = false;
+    [SerializeField] private CornerSizeSet cornerSizesOverride; // only used if overrideCornerSizes = true
+
+    [HideInInspector] public IntersectionModel Model;
+
+    [SerializeField, HideInInspector] private ProBuilderMesh _builtPB;
+
+    // Manual entry points
+    [ContextMenu("Rebuild Now")]   // optional: right-click component → Rebuild Now
+    public void Rebuild()
     {
+        ClearBuilt();
 
-    }
-
-
-    void Start()
-    {
-
-        Model = new IntersectionModel(Size, RoadHeight,
+        Model = new IntersectionModel(
+            Size, RoadHeight,
             ConnectedNorth, ConnectedEast, ConnectedSouth, ConnectedWest,
             intersectionConfig);
 
         if (material)
-            GetComponent<MeshRenderer>().sharedMaterial = material;
+        {
+            var mr = GetComponent<MeshRenderer>();
+            if (mr) mr.sharedMaterial = material;
+        }
 
-        PBMeshBuilder builder = new PBMeshBuilder();
+        var builder = new PBMeshBuilder();
         var sinkTag = gameObject.AddComponent<FaceSinkTag>();
         builder.Sink = sinkTag;
 
@@ -66,1041 +67,143 @@ public class ProceduralIntersection : MonoBehaviour
 
         RoadFillModule.CreateRoadFill(builder, Model, transform);
 
-        Material[] materials = new Material[] { material };
-        builder.Build(materials, this.transform);
+        var mats = material ? new[] { material } : null;
+        _builtPB = builder.Build(mats, this.transform);
 
-        Debug.Log(sinkTag.faces.Count);
+        ApplyCollider();
 
+        #if UNITY_EDITOR
+        EditorUtility.SetDirty(this);
+        if (!Application.isPlaying) UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
+        #endif
+    }
+
+    [ContextMenu("Clear Built")]   // optional: right-click component → Clear Built
+    public void ClearBuilt()
+    {
+        var sink = GetComponent<FaceSinkTag>();
+        if (sink)
+        {
+            #if UNITY_EDITOR
+            if (!Application.isPlaying) DestroyImmediate(sink);
+            else Destroy(sink);
+            #else
+            Destroy(sink);
+            #endif
+        }
+
+        var pbs = GetComponentsInChildren<ProBuilderMesh>(true);
+        foreach (var pb in pbs)
+        {
+            if (pb.gameObject == gameObject) continue;
+            #if UNITY_EDITOR
+            if (!Application.isPlaying) DestroyImmediate(pb.gameObject);
+            else Destroy(pb.gameObject);
+            #else
+            Destroy(pb.gameObject);
+            #endif
+        }
+
+        var cols = GetComponentsInChildren<MeshCollider>(true);
+        foreach (var col in cols)
+        {
+            if (col.gameObject == gameObject) continue;
+            #if UNITY_EDITOR
+            if (!Application.isPlaying) DestroyImmediate(col);
+            else Destroy(col);
+            #else
+            Destroy(col);
+            #endif
+        }
+    }
+
+    void Start()
+    {
+        // Keep runtime behavior if you want:
+        if (Application.isPlaying) Rebuild();
     }
 
     void OnDrawGizmos()
     {
-        Gizmos.color = Color.red;
+        // optional guard to avoid noise on disabled objects
+        if (this == null || !enabled) return;
+
+        Gizmos.color  = Color.red;
         Gizmos.matrix = Matrix4x4.TRS(transform.position, transform.rotation, Vector3.one);
 
-        // Draw outline
-        Gizmos.DrawLine(new Vector3(0, 0, 0), new Vector3(Size.x, 0, 0));
-        Gizmos.DrawLine(new Vector3(Size.x, 0, 0), new Vector3(Size.x, 0, Size.y));
-        Gizmos.DrawLine(new Vector3(Size.x, 0, Size.y), new Vector3(0, 0, Size.y));
-        Gizmos.DrawLine(new Vector3(0, 0, Size.y), new Vector3(0, 0, 0));
+        var a = new Vector3(0f,      0f,      0f);
+        var b = new Vector3(Size.x,  0f,      0f);
+        var c = new Vector3(Size.x,  0f,      Size.y);
+        var d = new Vector3(0f,      0f,      Size.y);
 
-        //Draw Apex positions if mesh is built
+        Gizmos.DrawLine(a, b);
+        Gizmos.DrawLine(b, c);
+        Gizmos.DrawLine(c, d);
+        Gizmos.DrawLine(d, a);
+
         if (Model != null)
         {
-            Gizmos.DrawWireSphere(Model.CornerSW.apex, 0.1f);
-            Gizmos.DrawWireSphere(Model.CornerSE.apex, 0.1f);
-            Gizmos.DrawWireSphere(Model.CornerNW.apex, 0.1f);
-            Gizmos.DrawWireSphere(Model.CornerNE.apex, 0.1f);
+            Gizmos.DrawWireSphere(Model.CornerSW.apex, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerSE.apex, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerNW.apex, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerNE.apex, 0.10f);
         }
     }
-}
 
-
-
-public enum RoadTopology { Plaza, DeadEnd, I, L, T, X }
-
-public sealed class IntersectionModel
-{
-    // -- Config --
-    public IntersectionGeometryConfig config;
-    // -- Inputs --
-    public readonly Vector2 Size;
-    public readonly bool ConnectedNorth, ConnectedEast, ConnectedSouth, ConnectedWest;
-
-    // -- Data --
-    public readonly RoadTopology RoadTopology;
-    public CornerModel CornerSE;
-    public CornerModel CornerSW;
-    public CornerModel CornerNE;
-    public CornerModel CornerNW;
-
-    public FootpathModel FootSouth;
-    public FootpathModel FootEast;
-    public FootpathModel FootNorth;
-    public FootpathModel FootWest;
-
-
-    public float RoadHeight;
-
-    public IntersectionModel(
-        Vector2 size, float roadHeight,
-         bool N, bool E, bool S, bool W,
-        IntersectionGeometryConfig config)
+    private void ApplyCollider()
     {
-        this.config = config;
-        ConnectedNorth = N; ConnectedEast = E; ConnectedSouth = S; ConnectedWest = W;
-        RoadTopology = Classify(ConnectedNorth, ConnectedEast, ConnectedSouth, ConnectedWest);
-        Size = size;
-        RoadHeight = roadHeight;
+        if (!_builtPB) return;
 
-        // local intersection corner origins/positions on XZ (y = 0)
-        Vector3 oSW = new Vector3(0f, 0f, 0f);
-        Vector3 oSE = new Vector3(Size.x, 0f, 0f);
-        Vector3 oNE = new Vector3(Size.x, 0f, Size.y);
-        Vector3 oNW = new Vector3(0f, 0f, Size.y);
+        // Bake PB to MeshFilter.sharedMesh
+        _builtPB.ToMesh();
+        _builtPB.Refresh();
 
-        // Initalize Corner Data Models
-        CornerSW = InitCornerModel(CornerId.SW, oSW, config.corners.For(CornerId.SW, config.curb));
-        CornerSE = InitCornerModel(CornerId.SE, oSE, config.corners.For(CornerId.SE, config.curb));
-        CornerNE = InitCornerModel(CornerId.NE, oNE, config.corners.For(CornerId.NE, config.curb));
-        CornerNW = InitCornerModel(CornerId.NW, oNW, config.corners.For(CornerId.NW, config.curb));
+        var mf = _builtPB.GetComponent<MeshFilter>();
+        if (!mf || !mf.sharedMesh) return;
 
-        // Initalize Footpath Data Models
-        FootSouth = InitFootpathModel(Side.South);
-        FootEast  = InitFootpathModel(Side.East);
-        FootNorth = InitFootpathModel(Side.North);
-        FootWest = InitFootpathModel(Side.West);
-        WireUpFootpathAdjacency();
+        // Ensure/refresh collider on the SAME child that holds the mesh
+        var col = _builtPB.GetComponent<MeshCollider>();
+        if (!col) col = _builtPB.gameObject.AddComponent<MeshCollider>();
 
-        
-
+        col.sharedMesh = null;            // force PhysX recook
+        col.sharedMesh = mf.sharedMesh;
+        col.convex = false;               // roads/intersections are non-convex
 
     }
 
-    private CornerModel InitCornerModel(CornerId id, Vector3 origin, CornerGeometry geo)
-{
-    var apex = CornerMath.ComputeApexFromOrigin(origin, id, geo, RoadHeight);
-    var (a, b) = Topology.AdjacentOf(id);
-
-    bool roadA = IsConnected(a);
-    bool roadB = IsConnected(b);
-
-    CornerType type;
-    bool exists;
-
-    if (roadA && roadB) { type = CornerType.InwardFacing; exists = true; }
-    else if (!roadA && !roadB) { type = CornerType.OutwardFacing; exists = true; }
-    else { type = CornerType.InwardFacing; exists = false; } // mixed: no special corner geometry
-
-    return new CornerModel(id, exists, type, origin, apex, a, b, geo);
-}
     
-    private FootpathModel InitFootpathModel(Side side)
+    public void ApplySharedDefaults(RoadSystemConfig cfg)
     {
-        bool exists = !IsConnected(side);
-        var geo = config.footpaths.For(side, in config.curb);
+        // Always inherit RoadHeight + Curb/Gutter
+        RoadHeight = cfg.roadHeight;
 
-        Vector3 edgeOrigin, edgeRight, edgeInward;
-        float edgeLength;
-        CornerModel leftCorner, rightCorner;
-        Side leftAdjSide, rightAdjSide;
+        var ic = intersectionConfig;
+        ic.curb = cfg.curb;
 
-        switch (side)
+        // Corner sizes: inherit unless overridden here
+        if (!overrideCornerSizes)
         {
-            case Side.South:
-                edgeOrigin = new Vector3(0f, 0f, 0f);
-                edgeRight  = Vector3.right;
-                edgeInward = Vector3.forward;
-                edgeLength = Size.x;
-                leftCorner  = CornerSW;
-                rightCorner = CornerSE;
-                leftAdjSide = Side.West;
-                rightAdjSide= Side.East;
-                break;
-
-            case Side.East:
-                edgeOrigin = new Vector3(Size.x, 0f, 0f);
-                edgeRight  = Vector3.forward;
-                edgeInward = Vector3.left;
-                edgeLength = Size.y;
-                leftCorner  = CornerSE;
-                rightCorner = CornerNE;
-                leftAdjSide = Side.South;
-                rightAdjSide= Side.North;
-                break;
-
-            case Side.North:
-                edgeOrigin = new Vector3(Size.x, 0f, Size.y);
-                edgeRight  = Vector3.left;
-                edgeInward = Vector3.back;
-                edgeLength = Size.x;
-                leftCorner  = CornerNE;
-                rightCorner = CornerNW;
-                leftAdjSide = Side.East;
-                rightAdjSide= Side.West;
-                break;
-
-            default: // West
-                edgeOrigin = new Vector3(0f, 0f, Size.y);
-                edgeRight  = Vector3.back;
-                edgeInward = Vector3.right;
-                edgeLength = Size.y;
-                leftCorner  = CornerNW;
-                rightCorner = CornerSW;
-                leftAdjSide = Side.North;
-                rightAdjSide= Side.South;
-                break;
-        }
-
-        var frame = new SiteFrame();
-
-        return new FootpathModel(
-            side: side,
-            exists: exists,
-            geometry: geo,
-            edgeLength: edgeLength,
-            edgeOrigin: edgeOrigin,
-            edgeRight: edgeRight,
-            edgeInward: edgeInward,
-            frame: frame,
-            leftCorner: in leftCorner,
-            rightCorner: in rightCorner,
-            leftAdjSide: leftAdjSide,
-            rightAdjSide: rightAdjSide
-        );
-    }
-
-    private static RoadTopology Classify(bool N, bool E, bool S, bool W)
-    {
-        int cnt = (N ? 1 : 0) + (E ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0);
-        if (cnt == 4) return RoadTopology.X;
-        if (cnt == 0) return RoadTopology.Plaza;
-        if (cnt == 1) return RoadTopology.DeadEnd;
-        if (cnt == 2) return ((N && S) || (E && W)) ? RoadTopology.I : RoadTopology.L;
-        return RoadTopology.T; // cnt == 3
-    }
-
-    private bool IsConnected(Side s) => s switch
-    {
-        Side.South => ConnectedSouth,
-        Side.East => ConnectedEast,
-        Side.North => ConnectedNorth,
-        Side.West => ConnectedWest,
-        _ => false
-    };
-
-    public FootpathModel GetFootpath(Side side) => side switch
-    {
-        Side.South => FootSouth,
-        Side.East => FootEast,
-        Side.North => FootNorth,
-        Side.West => FootWest,
-        _ => FootSouth
-    };
-
-    public CornerModel GetCorner(CornerId id) => id switch
-    {
-        CornerId.SW => CornerSW,
-        CornerId.SE => CornerSE,
-        CornerId.NE => CornerNE,
-        CornerId.NW => CornerNW,
-        _ => CornerSW
-    };
-
-    public (CornerModel left, CornerModel right) GetCornersForSide(Side side) => side switch
-    {
-        Side.South => (CornerSW, CornerSE),
-        Side.East => (CornerSE, CornerNE),
-        Side.North => (CornerNE, CornerNW),
-        Side.West => (CornerNW, CornerSW),
-        _ => (CornerSW, CornerSE)
-    };
-    
-    private void WireUpFootpathAdjacency()
-    {
-        // convenience lookup
-        bool Exists(Side s) => GetFootpath(s).exists;
-
-        FootSouth = FootSouth.WithAdjacency(
-            leftExists:  Exists(FootSouth.leftAdjSide),   // West
-            rightExists: Exists(FootSouth.rightAdjSide)); // East
-
-        FootEast = FootEast.WithAdjacency(
-            leftExists:  Exists(FootEast.leftAdjSide),    // South
-            rightExists: Exists(FootEast.rightAdjSide));  // North
-
-        FootNorth = FootNorth.WithAdjacency(
-            leftExists:  Exists(FootNorth.leftAdjSide),   // East
-            rightExists: Exists(FootNorth.rightAdjSide)); // West
-
-        FootWest = FootWest.WithAdjacency(
-            leftExists:  Exists(FootWest.leftAdjSide),    // North
-            rightExists: Exists(FootWest.rightAdjSide));  // South
-    }
-
-}
-
-// -------- Data Containers -------------------------------------------
-
-// ---- Intersection Global Values ----
-[System.Serializable]
-public struct IntersectionGeometryConfig
-{
-    [Header("Shared curb/gutter (applies to corners + footpaths)")]
-    public CurbGutter curb;
-
-    [Header("Corner settings")]
-    public CornerGeometryConfig corners;
-
-    [Header("Footpath settings")]
-    public FootpathGeometryConfig footpaths;
-
-    public static IntersectionGeometryConfig Default() => new IntersectionGeometryConfig
-    {
-        curb = CurbGutter.Default(),
-        corners = CornerGeometryConfig.Default(),
-        footpaths = FootpathGeometryConfig.Default()
-    };
-}
-
-[System.Serializable]
-public struct CurbGutter
-{
-    public float skirtOut;
-    public float skirtDown;
-    public float gutterDepth;
-    public float gutterWidth;
-
-    public static CurbGutter Default() => new CurbGutter
-    {
-        skirtOut = 0.35f,
-        skirtDown = 0.05f,
-        gutterDepth = 0.5f,
-        gutterWidth = 0.5f
-    };
-}
-
-
-
-
-// --- Corner Geometry Properties ---
-[System.Serializable]
-public struct CornerSize
-{
-    public float xSize;
-    public float zSize;
-}
-
-[System.Serializable]
-public struct CornerSizeSet
-{
-    public CornerSize SW, SE, NE, NW;
-    public CornerSize Get(CornerId id) => id switch {
-        CornerId.SW => SW, CornerId.SE => SE, CornerId.NE => NE, CornerId.NW => NW, _ => SW
-    };
-    public static CornerSizeSet FromSingle(CornerSize s) => new CornerSizeSet { SW=s, SE=s, NE=s, NW=s };
-}
-
-[System.Serializable]
-public struct CornerGeometryConfig
-{
-    [Header("Footpath Sizes (per corner)")]
-    public CornerSizeSet sizes;
-
-    public static CornerGeometryConfig Default()
-    {
-        return new CornerGeometryConfig
-        {
-            sizes = CornerSizeSet.FromSingle(new CornerSize { xSize = 3f, zSize = 3f }),
-        };
-    }
-
-    public CornerGeometry For(CornerId id, in CurbGutter curb) =>
-        new CornerGeometry(sizes.Get(id), curb);
-
-}
-
-public readonly struct CornerGeometry
-{
-    // Footpath
-    public readonly float xSize;
-    public readonly float zSize;
-    // Curb / Gutter (shared values copied in)
-    public readonly CurbGutter curb;
-
-    public CornerGeometry(CornerSize sz, CurbGutter curb)
-    {
-        xSize = sz.xSize; zSize = sz.zSize;
-        this.curb = curb;
-    }
-
-    // Handy derived values used in multiple places
-    public (float ax, float az) ApexOffsets() =>
-        (xSize + curb.skirtOut + curb.gutterWidth, zSize + curb.skirtOut + curb.gutterWidth);
-}
-
-// ---- Footpath Values ----
-// Runtime view used by builders (immutable w.r.t. curb)
-[Serializable]
-public struct FootpathGeometryConfig
-{
-    [Header("Footpath depth (per side)")]
-    public FootpathDepthSet depths;
-
-    [Header("Footpath extension (per side)")]
-    public FootpathExtendLengthsSet extends;
-
-    public static FootpathGeometryConfig Default() =>
-        new FootpathGeometryConfig
-        {
-            depths = FootpathDepthSet.FromSingle(3f),
-            extends = FootpathExtendLengthsSet.FromSingle(new FootpathExtendLengths
-            {
-                LeftExtend = 1.5f,
-                RightExtend = 1.5f
-            })
-        };
-
-    public FootpathGeometry For(Side side, in CurbGutter curb)
-    {
-        return new FootpathGeometry(
-            depths.Get(side),
-            curb,
-            extends.Get(side)
-        );
-    }
-}
-
-[Serializable]
-public struct FootpathGeometry
-{
-    public float depth;
-    public readonly CurbGutter curb;
-    public FootpathExtendLengths extend; // new: holds left/right extend
-
-    public FootpathGeometry(float depth, in CurbGutter curb, FootpathExtendLengths extend)
-    {
-        this.depth = depth;
-        this.curb = curb;
-        this.extend = extend;
-    }
-}
-
-[Serializable]
-public struct FootpathDepthSet
-{
-    public float South, East, North, West;
-
-    public float Get(Side side) => side switch
-    {
-        Side.South => South,
-        Side.East => East,
-        Side.North => North,
-        Side.West => West,
-        _ => South
-    };
-
-    public static FootpathDepthSet FromSingle(float d) =>
-        new FootpathDepthSet { South = d, East = d, North = d, West = d };
-}
-
-// ---- Footpath Extension Values ----
-[System.Serializable]
-public struct FootpathExtendLengths
-{
-    public float LeftExtend;
-    public float RightExtend;
-}
-
-[System.Serializable]
-public struct FootpathExtendLengthsSet
-{
-    public FootpathExtendLengths South;
-    public FootpathExtendLengths East;
-    public FootpathExtendLengths North;
-    public FootpathExtendLengths West;
-
-    public FootpathExtendLengths Get(Side side) => side switch
-    {
-        Side.South => South,
-        Side.East  => East,
-        Side.North => North,
-        Side.West  => West,
-        _          => South
-    };
-
-    public static FootpathExtendLengthsSet FromSingle(FootpathExtendLengths f) =>
-        new FootpathExtendLengthsSet { South = f, East = f, North = f, West = f };
-}
-
-
-// -- Geometry Modules --
-// ---- Corner Model ----
-[System.Serializable]
-public struct CornerModel
-{
-    public CornerGeometry geometry;
-
-    public readonly CornerId id;
-    public readonly CornerType type;
-    public readonly bool exists;
-    public readonly Vector3 origin;
-    public readonly Vector3 apex;
-    public readonly Side adjA;
-    public readonly Side adjB;
-
-        public CornerModel(
-        CornerId id, bool exists, CornerType type,
-        Vector3 origin, Vector3 apex, Side a, Side b, CornerGeometry geometry)
-    {
-        this.id = id; this.exists = exists; this.type = type;
-        this.origin = origin; this.apex = apex; adjA = a; adjB = b; this.geometry = geometry;
-    }
-
-    public bool IsAdjacentTo(Side s) => s == adjA || s == adjB;
-    public Side OppA => Topology.Opposite(adjA);
-    public Side OppB => Topology.Opposite(adjB);
-    public bool CanMeetFootpathOn(Side s) => s == OppA || s == OppB;
-}
-public static class CornerModule
-{
-    public static void CreateCorner(PBMeshBuilder builder, IntersectionModel model, CornerModel corner, CornerId cornerId, Transform transform)
-    {
-        if (!corner.exists) return;
-
-        if (corner.type == CornerType.InwardFacing)
-        {
-            CreateInwardCorner(builder, model, corner, cornerId, transform);
+            var corners = ic.corners;
+            corners.sizes = cfg.defaultCornerSizes;
+            ic.corners = corners;
         }
         else
         {
-            CreateOutwardCorner(builder, model, corner, cornerId, transform);
-        }
-    }
-
-    public static void CreateInwardCorner(PBMeshBuilder builder, IntersectionModel intersectionModel, CornerModel corner, CornerId cornerId, Transform transform)
-    {
-
-        bool swapXZ = cornerId == CornerId.NW || cornerId == CornerId.SE;
-        float sx = swapXZ ? corner.geometry.zSize : corner.geometry.xSize;
-        float sz = swapXZ ? corner.geometry.xSize : corner.geometry.zSize;
-
-        float skirtOut = corner.geometry.curb.skirtOut;
-        float skirtDown = corner.geometry.curb.skirtDown;
-        float gutterDepth = corner.geometry.curb.gutterDepth;
-        float gutterWidth = corner.geometry.curb.gutterWidth;
-        float roadY = intersectionModel.RoadHeight;
-
-        //Vector3 apexLocal = new Vector3(sx + skirtOut + gutterWidth, roadY, sz + skirtOut + gutterWidth);
-
-        Vector3[][] BuildGeometry()
-        {
-
-            // Canonical local: +x/+z are inward -- invert vertex placement for NW and SE corners
-            var qLocal = new Quad(vertices: new[]
-            {
-                new Vector3(0,0,0),
-                new Vector3(sx,0,0),
-                new Vector3(sx,0,sz),
-                new Vector3(0,0,sz),
-            });
-
-            var skirtX = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(1, Vector3.right, skirtOut, skirtDown));
-            var skirtZ = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(2, Vector3.forward, skirtOut, skirtDown));
-            var triangleCap = new Vector3[] { qLocal.Vertices[2], skirtX.Vertices[2], skirtZ.Vertices[1] };
-
-            var gutterApronX = ExtrusionUtil.ExtrudeEdgeOutDown(
-                skirtX.Vertices[1], skirtX.Vertices[2], Vector3.right, 0, gutterDepth
-            );
-            var gutterApronZ = ExtrusionUtil.ExtrudeEdgeOutDown(
-                skirtZ.Vertices[1], skirtZ.Vertices[2], Vector3.forward, 0, gutterDepth
-            );
-            var cornerQuadCap = new Vector3[] { triangleCap[2], triangleCap[1], gutterApronX[2], gutterApronZ[1] };
-
-            var gutterSkirtX = ExtrusionUtil.ExtrudeEdgeOutToWorldY(
-                gutterApronX[1], gutterApronX[2], Vector3.right, gutterWidth, intersectionModel.RoadHeight
-            );
-
-            var gutterSkirtZ = ExtrusionUtil.ExtrudeEdgeOutToWorldY(
-                gutterApronZ[1], gutterApronZ[2], Vector3.forward, gutterWidth, intersectionModel.RoadHeight
-            );
-
-            var gutterSkirtCap = new Vector3[] { gutterSkirtX[3], gutterSkirtX[2], gutterSkirtZ[1], gutterSkirtZ[0], };
-
-            Vector3 apexLocal = new Vector3(
-                qLocal.Vertices[2].x + skirtOut + gutterWidth, intersectionModel.RoadHeight, qLocal.Vertices[2].z + skirtOut + gutterWidth
-            );
-            var roadTriangleCap = new Vector3[] { gutterSkirtCap[2], gutterSkirtCap[1], apexLocal };
-
-
-            return new Vector3[][] { qLocal.Vertices, skirtX.Vertices, skirtZ.Vertices, triangleCap, gutterApronX, gutterApronZ, cornerQuadCap, gutterSkirtX, gutterSkirtZ, gutterSkirtCap, roadTriangleCap };
-        }
-        var cornerGeometry = BuildGeometry();
-
-        Vector3[][] ApplyRotationAndTranslationFor(CornerId id, Vector3[][] geo)
-        {
-            Vector3 rot, tx;
-            var size = intersectionModel.Size;
-
-            switch (id)
-            {
-                case CornerId.SW:
-                    rot = new Vector3(0, 0, 0);
-                    tx = new Vector3(0, 0, 0);
-                    break;
-                case CornerId.SE:
-                    rot = new Vector3(0, -90, 0);
-                    tx = new Vector3(size.x, 0, 0);
-                    break;
-                case CornerId.NE:
-                    rot = new Vector3(0, -180, 0);
-                    tx = new Vector3(size.x, 0, size.y);
-                    break;
-                case CornerId.NW:
-                    rot = new Vector3(0, -270, 0);
-                    tx = new Vector3(0, 0, size.y);
-                    break;
-                default:
-                    throw new ArgumentException("Invalid cornerId.", nameof(id));
-            }
-
-            var rotated = VertexOperations.RotateMany(geo, rot, Vector3.zero);
-            return VertexOperations.TranslateMany(rotated, tx);
+            var corners = ic.corners;
+            corners.sizes = cornerSizesOverride;
+            ic.corners = corners;
         }
 
-        var finalCornerGeometry = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
-
-        finalCornerGeometry = VertexOperations.TranslateMany(finalCornerGeometry, transform.position);
-
-        builder.AddQuadFace(finalCornerGeometry[0]);
-        builder.AddQuadFace(finalCornerGeometry[1]);
-        builder.AddQuadFace(finalCornerGeometry[2]);
-        builder.AddTriangleFace(finalCornerGeometry[3]);
-
-        builder.AddQuadFace(finalCornerGeometry[4]); // Gutter Apron X
-        builder.AddQuadFace(finalCornerGeometry[5]); // Gutter Apron Z
-        builder.AddQuadFace(finalCornerGeometry[6]); // Corner Quad Cap
-        builder.AddQuadFace(finalCornerGeometry[7]); // Gutter Skirt X
-        builder.AddQuadFace(finalCornerGeometry[8]); // Gutter Skirt Z
-        builder.AddQuadFace(finalCornerGeometry[9]); // Gutter Skirt Cap
-        builder.AddTriangleFace(finalCornerGeometry[10]); // Road Triangle Cap
-    }
-
-    public static void CreateOutwardCorner(PBMeshBuilder builder, IntersectionModel model, CornerModel corner, CornerId cornerId, Transform transform)
-    {
-        // Use the per-corner footpath sizes you already store in CornerGeometry.
-        // Build in canonical local where +X and +Z go "inward" from the corner origin.
-        bool swapXZ = cornerId == CornerId.NW || cornerId == CornerId.SE;
-        float sx = swapXZ ? corner.geometry.zSize : corner.geometry.xSize;
-        float sz = swapXZ ? corner.geometry.xSize : corner.geometry.zSize;
-
-        var curb = model.config.curb;
-
-        float y = 0f;
-
-        // A simple footpath corner pad filling the empty L-wedge:
-        // Here we start with a rectangle [0..sx] x [0..sz] at y=0.
-        // (We’ll trim/shape and add curb/gutter in the next step.)
-        var pad = new Vector3[]
-        {
-            new Vector3(0,  y, 0),
-            new Vector3(sx, y, 0),
-            new Vector3(sx, y, sz),
-            new Vector3(0,  y, sz)
-        };
-
-        float offset = model.config.curb.skirtOut + model.config.curb.gutterWidth;
-
-        var footpathCap = new Vector3[]
-        {
-            pad[2],
-            new Vector3(pad[2].x + offset, pad[2].y, pad[2].z),
-            new Vector3(pad[2].x, pad[2].y, pad[2].z + offset),
-        };
-
-        Vector3[] curbSkirt = new Vector3[]
-        {
-            new Vector3(footpathCap[1].x, footpathCap[1].y - curb.skirtDown, footpathCap[1].z + curb.skirtOut),
-            new Vector3(footpathCap[2].x + curb.skirtOut,  footpathCap[2].y - curb.skirtDown, footpathCap[2].z),
-            footpathCap[2],
-            footpathCap[1],
-        };
-
-        Vector3[] gutterApron = new Vector3[]
-        {
-            curbSkirt[0],
-            new Vector3(curbSkirt[0].x,  curbSkirt[0].y - curb.gutterDepth, curbSkirt[0].z),
-            new Vector3(curbSkirt[1].x,  curbSkirt[1].y - curb.gutterDepth, curbSkirt[1].z),
-            curbSkirt[1]
-        };
-
-
-        Vector3 apexLocal = new Vector3(
-                pad[2].x + curb.skirtOut + curb.gutterWidth, model.RoadHeight, pad[2].z + curb.skirtOut + curb.gutterWidth
-            );
-        Vector3[] gutterCap = new Vector3[]
-        {
-
-            gutterApron[2],
-            gutterApron[1],
-            apexLocal,
-
-
-        };
-
-        Vector3[][] sets = { pad, footpathCap, curbSkirt, gutterApron, gutterCap };
-
-        // Rotate/translate the same way you do in the inward corner:
-        Vector3 rot, tx;
-        var size = model.Size;
-        switch (cornerId)
-        {
-            case CornerId.SW: rot = new Vector3(0,   0, 0); tx = new Vector3(0,     0, 0);       break;
-            case CornerId.SE: rot = new Vector3(0, -90, 0); tx = new Vector3(size.x, 0, 0);       break;
-            case CornerId.NE: rot = new Vector3(0,-180, 0); tx = new Vector3(size.x, 0, size.y);  break;
-            default:          rot = new Vector3(0,-270, 0); tx = new Vector3(0,     0, size.y);  break; // NW
-        }
-
-        var rotated = VertexOperations.RotateMany(sets, rot, Vector3.zero);
-        var placedLocal = VertexOperations.TranslateMany(rotated, tx);
-        var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
-
-        builder.AddQuadFace(placedWorld[0]);
-        builder.AddTriangleFace(placedWorld[1]);
-        builder.AddQuadFace(placedWorld[2]);
-        builder.AddQuadFace(placedWorld[3]);
-        builder.AddTriangleFace(placedWorld[4]);
+        intersectionConfig = ic;
     }
 }
 
 
-public struct SiteFrame
-{
-  
-}
-
-// --- Footpath ---
-public struct FootpathModel
-{
-    public readonly Side side;
-    public readonly bool exists;
-    public readonly FootpathGeometry geometry;
-
-    // Edge info in intersection-local
-    public readonly float edgeLength;   // Size.x or Size.y depending on side
-    public readonly float edgeMid;      // edgeLength * 0.5f
-    public readonly Vector3 edgeOrigin; // start of the edge in local
-    public readonly Vector3 edgeRight;  // along-edge dir (unit)
-    public readonly Vector3 edgeInward; // into the block (unit)
-    public readonly SiteFrame frame;
-
-    // Stitching helpers
-    public readonly CornerModel leftCorner;
-    public readonly CornerModel rightCorner;
-
-    // NEW: adjacency
-    public readonly Side leftAdjSide;
-    public readonly Side rightAdjSide;
-    public bool leftAdjExists;   // derived, set after all footpaths are built
-    public bool rightAdjExists;  // derived, set after all footpaths are built
-
-    public FootpathModel(
-        Side side, bool exists, FootpathGeometry geometry,
-        float edgeLength, Vector3 edgeOrigin, Vector3 edgeRight, Vector3 edgeInward,
-        SiteFrame frame, in CornerModel leftCorner, in CornerModel rightCorner,
-        Side leftAdjSide, Side rightAdjSide)
-    {
-        this.side = side; this.exists = exists; this.geometry = geometry;
-        this.edgeLength = edgeLength;
-        this.edgeMid = edgeLength * 0.5f;
-        this.edgeOrigin = edgeOrigin;
-        this.edgeRight = edgeRight;
-        this.edgeInward = edgeInward;
-        this.frame = frame;
-        this.leftCorner = leftCorner;
-        this.rightCorner = rightCorner;
-
-        this.leftAdjSide = leftAdjSide;
-        this.rightAdjSide = rightAdjSide;
-        this.leftAdjExists = false;
-        this.rightAdjExists = false;
-    }
-
-    public FootpathModel WithAdjacency(bool leftExists, bool rightExists)
-    {
-        var f = this; // copy
-        f.leftAdjExists = leftExists;
-        f.rightAdjExists = rightExists;
-        return f;
-    }
-}
-public static class FootpathModule
-{
-    public static void CreateFootpath(PBMeshBuilder builder, Transform transform, IntersectionModel model, Side side)
-    {
-        var fp = model.GetFootpath(side);
-        if (!fp.exists) return;
-
-        var geo = fp.geometry;
-        var curb = geo.curb;
-
-        // ---- Compute extends from corners (your existing logic) ---------------
-        static float ParamAlongEdge(in FootpathModel fpm, in Vector3 p)
-        {
-            float t = Vector3.Dot(p - fpm.edgeOrigin, fpm.edgeRight);
-            return Mathf.Clamp(t, 0f, fpm.edgeLength);
-        }
-
-        float tL = fp.leftCorner.exists || fp.leftAdjExists ? ParamAlongEdge(fp, fp.leftCorner.apex) : 0f;
-        float tR = fp.rightCorner.exists || fp.rightAdjExists ? ParamAlongEdge(fp, fp.rightCorner.apex) : fp.edgeLength;
-
-        float mid = fp.edgeMid;
-        float leftExtend = Mathf.Max(0f, mid - tL);
-        float rightExtend = Mathf.Max(0f, tR - mid);
-
-        float xL = mid - leftExtend;
-        float xR = mid + rightExtend;
-
-        float z0 = 0f;                 // outer edge
-        float z1 = geo.depth;          // inner edge toward roadway
-        float y = 0f;                 // build at y=0; world Y comes from final translation
-
-        // ---- 0) Footpath slab (canonical; +Z points inward) -------------------
-        var pathBase = new Quad(new[]
-        {
-            new Vector3(xL, y, z0), // v0
-            new Vector3(xR, y, z0), // v1
-            new Vector3(xR, y, z1), // v2  <-- inner/top edge (edgeIndex = 2: v2->v3)
-            new Vector3(xL, y, z1), // v3
-        });
-
-        // ---- 1) Curb skirt: extrude inner edge out (+Z) and down -------------
-        // Correct Quad usage: edgeIndex in [0..3], outward dir (horizontal), outAmount, downAmount
-        var curbSkirt = new Quad(vertices: pathBase.ExtrudeEdgeOutDown(2, Vector3.forward, curb.skirtOut, curb.skirtDown));
-
-        // ---- 2) Gutter apron: continue down from skirt’s inner outer-edge ----
-        // Do another Quad extrusion with outAmount = 0 and DOWN = gutterDepth.
-        // Use the skirt’s *same* top/inner edge index (still 2: its v2->v3)
-        var gutterApron = ExtrusionUtil.ExtrudeEdgeOutDown(
-                curbSkirt.Vertices[1], curbSkirt.Vertices[2], Vector3.forward, 0, curb.gutterDepth
-            );
 
 
-        // ---- 3) Gutter skirt to road Y: push horizontally by gutterWidth and snap to world Y
-        // Use apronVerts[1] and apronVerts[2] as the edge endpoints.
-        var gutterSkirtToRoad = ExtrusionUtil.ExtrudeEdgeOutToWorldY(
-                gutterApron[1], gutterApron[2], Vector3.forward, curb.gutterWidth, model.RoadHeight
-            );
-
-        // --- 2) After curb/gutter: extend only the slab to meet outward corners --
-        float join = curb.skirtOut + curb.gutterWidth;
-
-        // Heuristic for “outward corner”: corner geometry absent but adjacent footpath exists.
-        bool extendLeftSide = fp.leftAdjExists;
-        bool extendRightSide = fp.rightAdjExists;
-
-        // Copy the slab verts & push only the X on the sides that need joining.
-        var path = (Vector3[])pathBase.Vertices.Clone();
-
-        if (extendLeftSide)
-        {
-            path[0].x = Mathf.Max(0f, path[0].x - join);
-            path[3].x = Mathf.Max(0f, path[3].x - join);
-        }
-        if (extendRightSide)
-        {
-            path[1].x = Mathf.Min(fp.edgeLength, path[1].x + join);
-            path[2].x = Mathf.Min(fp.edgeLength, path[2].x + join);
-        }
 
 
-        // ---- Collect and place ------------------------------------------------
-        Vector3[][] sets = {
-            path,
-            curbSkirt.Vertices,
-            gutterApron,
-            gutterSkirtToRoad
-        };
 
-        var (rotY, tx) = PlacementFor(side, model.Size);
-        var rotated = VertexOperations.RotateMany(sets, new Vector3(0f, rotY, 0f), Vector3.zero);
-        var placedLocal = VertexOperations.TranslateMany(rotated, tx);
-        var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
 
-        builder.AddQuadFace(placedWorld[0]); // path
-        builder.AddQuadFace(placedWorld[1]); // curb skirt
-        builder.AddQuadFace(placedWorld[2]); // gutter apron
-        builder.AddQuadFace(placedWorld[3]); // gutter skirt to road
-    }
-
-    // Match CornerModule’s convention (clockwise/negative yaw & same translations)
-    private static (float rotYdeg, Vector3 tx) PlacementFor(Side side, Vector2 size) => side switch
-    {
-        Side.South => (0f, new Vector3(0f, 0f, 0f)),
-        Side.East => (-90f, new Vector3(size.x, 0f, 0f)),
-        Side.North => (-180f, new Vector3(size.x, 0f, size.y)),
-        _ => (-270f, new Vector3(0f, 0f, size.y)), // West
-    };
-}
-
-public static class RoadFillModule
-{
-    // CCW quad on xz at y
-    private static Vector3[] QuadXZ(float x0, float x1, float z0, float z1, float y)
-    {
-        // Order to get up-facing normals: NE, NW, SW, SE (consistent with your plaza)
-        return new[]
-        {
-            new Vector3(x1, y, z1), // NE
-            new Vector3(x0, y, z1), // NW
-            new Vector3(x0, y, z0), // SW
-            new Vector3(x1, y, z0), // SE
-        };
-    }
-
-    public static void CreateRoadFill(PBMeshBuilder builder, IntersectionModel m, Transform t)
-    {
-        // Inner offsets from each boundary using apexes (works for both inward/outward corners)
-        float xL = Mathf.Max(m.CornerSW.apex.x, m.CornerNW.apex.x);
-        float xR = Mathf.Min(m.CornerSE.apex.x, m.CornerNE.apex.x);
-        float zB = Mathf.Max(m.CornerSW.apex.z, m.CornerSE.apex.z);
-        float zT = Mathf.Min(m.CornerNW.apex.z, m.CornerNE.apex.z);
-        float RH = m.RoadHeight;
-
-        // Guard: degenerate cases (can happen with tiny configs or extreme values)
-        if (xL >= xR || zB >= zT)
-        {
-            Debug.LogWarning($"RoadFill degenerate rectangle: xL={xL} xR={xR} zB={zB} zT={zT}");
-            return;
-        }
-
-        var faces = new List<Vector3[]>();
-
-        // 1) Center rectangle (Plaza core) — always present
-        faces.Add(QuadXZ(xL, xR, zB, zT, RH));
-
-        // 2) Edge bands only where a road connects to the outside world.
-        // They extend to the boundary but exclude the corner squares.
-        if (m.ConnectedSouth) faces.Add(QuadXZ(xL, xR, 0f, zB, RH));           // South band
-        if (m.ConnectedNorth) faces.Add(QuadXZ(xL, xR, zT, m.Size.y, RH));     // North band
-        if (m.ConnectedWest)  faces.Add(QuadXZ(0f, xL, zB, zT, RH));           // West band
-        if (m.ConnectedEast)  faces.Add(QuadXZ(xR, m.Size.x, zB, zT, RH));     // East band
-
-        // Place (no rotation needed; apexes are already in intersection-local)
-        var placed = VertexOperations.TranslateMany(faces.ToArray(), t.position);
-
-        foreach (var f in placed)
-            builder.AddQuadFace(f);
-    }
-}
-
-// --- Topology Util ---
-public static class Topology
-{
-    public static Side Opposite(Side s) => s switch
-    {
-        Side.North => Side.South,
-        Side.South => Side.North,
-        Side.East => Side.West,
-        _ => Side.East, // West
-    };
-
-    public static bool AreAdjacent(Side a, Side b) =>
-        a != b && a != Opposite(b);
-
-    public static bool IsVertical(Side s) => s == Side.West || s == Side.East;
-    public static bool IsHorizontal(Side s) => s == Side.North || s == Side.South;
-
-    public static CornerId CornerOf(Side a, Side b)
-    {
-        // Normalize ordering so mapping is easy
-        var s1 = a; var s2 = b;
-        if (IsVertical(s1) && IsHorizontal(s2)) { /* ok */ }
-        else if (IsHorizontal(s1) && IsVertical(s2)) { var tmp = s1; s1 = s2; s2 = tmp; }
-        else throw new System.ArgumentException("Sides must be perpendicular.");
-
-        return (s1, s2) switch
-        {
-            (Side.West, Side.South) => CornerId.SW,
-            (Side.West, Side.North) => CornerId.NW,
-            (Side.East, Side.South) => CornerId.SE,
-            (Side.East, Side.North) => CornerId.NE,
-            _ => throw new System.ArgumentException("Unexpected sides.")
-        };
-    }
-
-    public static (Side a, Side b) AdjacentOf(CornerId id)
-    {
-        // Return the two rectangle edges that meet at this corner, in clockwise order.
-        return id switch
-        {
-            CornerId.SW => (Side.South, Side.West),
-            CornerId.SE => (Side.South, Side.East),
-            CornerId.NE => (Side.North, Side.East),
-            CornerId.NW => (Side.North, Side.West),
-            _ => throw new System.ArgumentOutOfRangeException(nameof(id), id, null)
-        };
-    }
-}
-
-public readonly struct RoadOrientation
-{
-    public readonly float yawDeg;
-    public readonly bool mirror; // kept for future-proofing; not used now
-
-    public RoadOrientation(float yawDeg, bool mirror = false)
-    {
-        // normalize to [-180, 180) for sanity
-        yawDeg = Mathf.Repeat(yawDeg + 180f, 360f) - 180f;
-        this.yawDeg = yawDeg;
-        this.mirror = mirror;
-    }
-}
-
-public static class RoadOrientationUtil
-{
-    // Map actual connections -> yaw that rotates CANONICAL to ACTUAL.
-    public static RoadOrientation OrientationFor(bool N, bool E, bool S, bool W)
-    {
-        int cnt = (N ? 1 : 0) + (E ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0);
-
-        switch (cnt)
-        {
-            case 0: // Plaza
-                return new RoadOrientation(0f);
-
-            case 1: // DeadEnd: canonical = S connected
-                if (S) return new RoadOrientation(0f);     // canonical
-                if (E) return new RoadOrientation(-90f);
-                if (N) return new RoadOrientation(-180f);
-                /*W*/ return new RoadOrientation(-270f);
-
-            case 2:
-                // Either "I" (opposites) or "L" (adjacent)
-                if ((N && S) && !(E || W))
-                    return new RoadOrientation(0f);        // I canonical: N+S
-                if ((E && W) && !(N || S))
-                    return new RoadOrientation(-90f);      // rotate vertical to horizontal
-
-                // L-shape canonical = S+E
-                if (S && E) return new RoadOrientation(0f);      // canonical
-                if (E && N) return new RoadOrientation(-90f);
-                if (N && W) return new RoadOrientation(-180f);
-                /*W && S*/ return new RoadOrientation(-270f);
-
-            case 3: // T-shape canonical = S+E+W (missing N)
-                if (!N) return new RoadOrientation(0f);          // canonical
-                if (!W) return new RoadOrientation(-90f);         // missing W => rotate 90 cw
-                if (!S) return new RoadOrientation(-180f);        // missing S
-                /* !E */ return new RoadOrientation(-270f);       // missing E
-
-            case 4: // X
-                return new RoadOrientation(0f);
-
-            default:
-                return new RoadOrientation(0f);
-        }
-    }
-}
-
-static class CornerMath
-{
-    public static (int sx, int sz) InwardSigns(CornerId id) => id switch
-    {
-        CornerId.SW => (+1, +1),
-        CornerId.SE => (-1, +1),
-        CornerId.NE => (-1, -1),
-        CornerId.NW => (+1, -1),
-        _ => (+1, +1)
-    };
-
-    public static Vector3 ComputeApexFromOrigin(Vector3 origin, CornerId id, CornerGeometry gp, float roadHeight)
-    {
-        float ax = gp.xSize + gp.curb.skirtOut + gp.curb.gutterWidth;
-        float az = gp.zSize + gp.curb.skirtOut + gp.curb.gutterWidth;
-        var (sx, sz) = InwardSigns(id);
-        return origin + new Vector3(sx * ax, roadHeight, sz * az);
-    }
-}
 
 
