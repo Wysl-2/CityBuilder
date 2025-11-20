@@ -9,4 +9,7 @@ public sealed class RoadSystemConfig : ScriptableObject
 
     [Header("Default Corner Footpath Size (per-corner)")]
     public CornerSizeSet defaultCornerSizes = CornerGeometryConfig.Default().sizes;
+
+    [Header("Default Footpaths (per-side)")]
+    public FootpathGeometryConfig defaultFootpaths = FootpathGeometryConfig.Default();
 }

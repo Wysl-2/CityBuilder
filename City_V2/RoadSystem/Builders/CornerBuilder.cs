@@ -1,4 +1,6 @@
 
+using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public static class CornerModule
@@ -17,6 +19,12 @@ public static class CornerModule
         }
     }
 
+    // CCW quad on XZ at y: v0..v3 = (x0,z0)->(x1,z0)->(x1,z1)->(x0,z1)
+    static Vector3[] MakeQuadXZ(float x0, float x1, float z0, float z1, float y) => new[]
+    {
+        new Vector3(x0,y,z0), new Vector3(x1,y,z0), new Vector3(x1,y,z1), new Vector3(x0,y,z1)
+    };
+
     public static void CreateInwardCorner(PBMeshBuilder builder, IntersectionModel intersectionModel, CornerModel corner, CornerId cornerId, Transform transform)
     {
 
@@ -32,27 +40,39 @@ public static class CornerModule
 
         //Vector3 apexLocal = new Vector3(sx + skirtOut + gutterWidth, roadY, sz + skirtOut + gutterWidth);
 
-        Vector3[][] BuildGeometry()
+        List<Vector3[]> BuildGeometry()
         {
 
-            // Canonical local: +x/+z are inward -- invert vertex placement for NW and SE corners
-            var qLocal = new Quad(vertices: new[]
-            {
-                new Vector3(0,0,0),
-                new Vector3(sx,0,0),
-                new Vector3(sx,0,sz),
-                new Vector3(0,0,sz),
-            });
+            var faces = new List<Vector3[]>(capacity: 11);
 
-            var skirtX = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(1, Vector3.right, skirtOut, skirtDown));
-            var skirtZ = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(2, Vector3.forward, skirtOut, skirtDown));
-            var triangleCap = new Vector3[] { qLocal.Vertices[2], skirtX.Vertices[2], skirtZ.Vertices[1] };
+            // Canonical local: +x/+z are inward -- invert vertex placement for NW and SE corners
+            // var qLocal = new Quad(vertices: new[]
+            // {
+            //     new Vector3(0,0,0),
+            //     new Vector3(sx,0,0),
+            //     new Vector3(sx,0,sz),
+            //     new Vector3(0,0,sz),
+            // });
+            var qLocal = MakeQuadXZ(0f, sx, 0f, sz, 0f);
+
+            // Skirts from inner edges:
+            var e1a = qLocal[1];  // start of edge 1 (v1)
+            var e1b = qLocal[2];  // end of edge 1 (v2)
+            var e2a = qLocal[2];  // start of edge 2 (v2)
+            var e2b = qLocal[3];  // end of edge 2 (v3)
+            var skirtX = ExtrusionUtil.ExtrudeEdgeOutDown(e1a, e1b, Vector3.right,   skirtOut, skirtDown);
+            var skirtZ = ExtrusionUtil.ExtrudeEdgeOutDown(e2a, e2b, Vector3.forward, skirtOut, skirtDown);
+
+            // var skirtX = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(1, Vector3.right, skirtOut, skirtDown));
+            // var skirtZ = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(2, Vector3.forward, skirtOut, skirtDown));
+
+            var triangleCap = new Vector3[] { qLocal[2], skirtX[2], skirtZ[1] };
 
             var gutterApronX = ExtrusionUtil.ExtrudeEdgeOutDown(
-                skirtX.Vertices[1], skirtX.Vertices[2], Vector3.right, 0, gutterDepth
+                skirtX[1], skirtX[2], Vector3.right, 0, gutterDepth
             );
             var gutterApronZ = ExtrusionUtil.ExtrudeEdgeOutDown(
-                skirtZ.Vertices[1], skirtZ.Vertices[2], Vector3.forward, 0, gutterDepth
+                skirtZ[1], skirtZ[2], Vector3.forward, 0, gutterDepth
             );
             var cornerQuadCap = new Vector3[] { triangleCap[2], triangleCap[1], gutterApronX[2], gutterApronZ[1] };
 
@@ -67,62 +87,54 @@ public static class CornerModule
             var gutterSkirtCap = new Vector3[] { gutterSkirtX[3], gutterSkirtX[2], gutterSkirtZ[1], gutterSkirtZ[0], };
 
             Vector3 apexLocal = new Vector3(
-                qLocal.Vertices[2].x + skirtOut + gutterWidth, roadY, qLocal.Vertices[2].z + skirtOut + gutterWidth
+                qLocal[2].x + skirtOut + gutterWidth, roadY, qLocal[2].z + skirtOut + gutterWidth
             );
             var roadTriangleCap = new Vector3[] { gutterSkirtCap[2], gutterSkirtCap[1], apexLocal };
 
+            faces.Add(qLocal);
+            faces.Add(skirtX);
+            faces.Add(skirtZ);
+            faces.Add(triangleCap);
+            faces.Add(gutterApronX);
+            faces.Add(gutterApronZ);
+            faces.Add(cornerQuadCap);
+            faces.Add(gutterSkirtX);
+            faces.Add(gutterSkirtZ);
+            faces.Add(gutterSkirtCap);
+            faces.Add(roadTriangleCap);
 
-            return new Vector3[][] { qLocal.Vertices, skirtX.Vertices, skirtZ.Vertices, triangleCap, gutterApronX, gutterApronZ, cornerQuadCap, gutterSkirtX, gutterSkirtZ, gutterSkirtCap, roadTriangleCap };
+            return faces;
+
+            //return new Vector3[][] { qLocal.Vertices, skirtX.Vertices, skirtZ.Vertices, triangleCap, gutterApronX, gutterApronZ, cornerQuadCap, gutterSkirtX, gutterSkirtZ, gutterSkirtCap, roadTriangleCap };
         }
         var cornerGeometry = BuildGeometry();
 
-        Vector3[][] ApplyRotationAndTranslationFor(CornerId id, Vector3[][] geo)
+        List<Vector3[]> ApplyRotationAndTranslationFor(CornerId id, List<Vector3[]> geo)
         {
-            Vector3 rot, tx;
+            Vector3 euler, tx;
             var size = intersectionModel.Size;
 
             switch (id)
             {
-                case CornerId.SW:
-                    rot = new Vector3(0, 0, 0);
-                    tx = new Vector3(0, 0, 0);
-                    break;
-                case CornerId.SE:
-                    rot = new Vector3(0, -90, 0);
-                    tx = new Vector3(size.x, 0, 0);
-                    break;
-                case CornerId.NE:
-                    rot = new Vector3(0, -180, 0);
-                    tx = new Vector3(size.x, 0, size.y);
-                    break;
-                case CornerId.NW:
-                    rot = new Vector3(0, -270, 0);
-                    tx = new Vector3(0, 0, size.y);
-                    break;
-                default:
-                    throw new ArgumentException("Invalid cornerId.", nameof(id));
+                case CornerId.SW: euler = new Vector3(0,   0, 0); tx = new Vector3(0,      0, 0);       break;
+                case CornerId.SE: euler = new Vector3(0, -90, 0); tx = new Vector3(size.x, 0, 0);       break;
+                case CornerId.NE: euler = new Vector3(0,-180, 0); tx = new Vector3(size.x, 0, size.y);  break;
+                case CornerId.NW: euler = new Vector3(0,-270, 0); tx = new Vector3(0,      0, size.y);  break;
+                default: throw new ArgumentException("Invalid cornerId.", nameof(id));
             }
 
-            var rotated = VertexOperations.RotateMany(geo, rot, Vector3.zero);
-            return VertexOperations.TranslateMany(rotated, tx);
+            var q        = Quaternion.Euler(euler);                // Quaternion, not Euler vector
+            var rotated  = VertexOperations.RotateMany(geo, q, Vector3.zero);
+            var shifted  = VertexOperations.TranslateMany(rotated, tx);
+            return shifted;
         }
 
-        var finalCornerGeometry = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
 
-        finalCornerGeometry = VertexOperations.TranslateMany(finalCornerGeometry, transform.position);
+        var placedLocal  = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
+        var placedWorld  = VertexOperations.TranslateMany(placedLocal, transform.position);
 
-        builder.AddQuadFace(finalCornerGeometry[0]);
-        builder.AddQuadFace(finalCornerGeometry[1]);
-        builder.AddQuadFace(finalCornerGeometry[2]);
-        builder.AddTriangleFace(finalCornerGeometry[3]);
+        builder.AddFaces(placedWorld); // To Do: Change PBMeshBuilder to use List<Vector3[]> instead of Vector3[][]
 
-        builder.AddQuadFace(finalCornerGeometry[4]); // Gutter Apron X
-        builder.AddQuadFace(finalCornerGeometry[5]); // Gutter Apron Z
-        builder.AddQuadFace(finalCornerGeometry[6]); // Corner Quad Cap
-        builder.AddQuadFace(finalCornerGeometry[7]); // Gutter Skirt X
-        builder.AddQuadFace(finalCornerGeometry[8]); // Gutter Skirt Z
-        builder.AddQuadFace(finalCornerGeometry[9]); // Gutter Skirt Cap
-        builder.AddTriangleFace(finalCornerGeometry[10]); // Road Triangle Cap
     }
 
     public static void CreateOutwardCorner(PBMeshBuilder builder, IntersectionModel model, CornerModel corner, CornerId cornerId, Transform transform)
@@ -134,7 +146,7 @@ public static class CornerModule
         float sz = swapXZ ? corner.geometry.xSize : corner.geometry.zSize;
 
         var curb = model.config.curb;
-
+        float offset = model.config.curb.skirtOut + model.config.curb.gutterWidth;
         float y = 0f;
 
         // A simple footpath corner pad filling the empty L-wedge:
@@ -148,7 +160,6 @@ public static class CornerModule
             new Vector3(0,  y, sz)
         };
 
-        float offset = model.config.curb.skirtOut + model.config.curb.gutterWidth;
 
         var footpathCap = new Vector3[]
         {
@@ -183,31 +194,29 @@ public static class CornerModule
             gutterApron[2],
             gutterApron[1],
             apexLocal,
-
-
         };
 
-        Vector3[][] sets = { pad, footpathCap, curbSkirt, gutterApron, gutterCap };
+        var faces = new List<Vector3[]>(capacity: 5)
+        {
+            pad, footpathCap, curbSkirt, gutterApron, gutterCap
+        };
 
-        // Rotate/translate the same way you do in the inward corner:
-        Vector3 rot, tx;
+         // Rotation (Quaternion) + translation
+        Vector3 euler, tx;
         var size = model.Size;
         switch (cornerId)
         {
-            case CornerId.SW: rot = new Vector3(0,   0, 0); tx = new Vector3(0,     0, 0);       break;
-            case CornerId.SE: rot = new Vector3(0, -90, 0); tx = new Vector3(size.x, 0, 0);       break;
-            case CornerId.NE: rot = new Vector3(0,-180, 0); tx = new Vector3(size.x, 0, size.y);  break;
-            default:          rot = new Vector3(0,-270, 0); tx = new Vector3(0,     0, size.y);  break; // NW
+            case CornerId.SW: euler = new Vector3(0,   0, 0);  tx = new Vector3(0,      0, 0);      break;
+            case CornerId.SE: euler = new Vector3(0, -90, 0);  tx = new Vector3(size.x, 0, 0);      break;
+            case CornerId.NE: euler = new Vector3(0,-180, 0);  tx = new Vector3(size.x, 0, size.y); break;
+            default:          euler = new Vector3(0,-270, 0);  tx = new Vector3(0,      0, size.y); break; // NW
         }
 
-        var rotated = VertexOperations.RotateMany(sets, rot, Vector3.zero);
+        var q           = Quaternion.Euler(euler);
+        var rotated     = VertexOperations.RotateMany(faces, q, Vector3.zero);
         var placedLocal = VertexOperations.TranslateMany(rotated, tx);
         var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
 
-        builder.AddQuadFace(placedWorld[0]);
-        builder.AddTriangleFace(placedWorld[1]);
-        builder.AddQuadFace(placedWorld[2]);
-        builder.AddQuadFace(placedWorld[3]);
-        builder.AddTriangleFace(placedWorld[4]);
+        builder.AddFaces(placedWorld); // assumes PBMeshBuilder.AddFaces(List<Vector3[]>) exists
     }
 }

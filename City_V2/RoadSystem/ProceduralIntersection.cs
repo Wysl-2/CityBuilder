@@ -174,13 +174,14 @@ public class ProceduralIntersection : MonoBehaviour
     
     public void ApplySharedDefaults(RoadSystemConfig cfg)
     {
-        // Always inherit RoadHeight + Curb/Gutter
         RoadHeight = cfg.roadHeight;
 
         var ic = intersectionConfig;
+
+        // curb applies to corners + footpaths
         ic.curb = cfg.curb;
 
-        // Corner sizes: inherit unless overridden here
+        // corner sizes (respect override flag as you already do)
         if (!overrideCornerSizes)
         {
             var corners = ic.corners;
@@ -193,6 +194,9 @@ public class ProceduralIntersection : MonoBehaviour
             corners.sizes = cornerSizesOverride;
             ic.corners = corners;
         }
+
+        // NEW: footpaths (per-side depth + extends) from SO
+        ic.footpaths = cfg.defaultFootpaths;
 
         intersectionConfig = ic;
     }

@@ -14,20 +14,39 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::RoadSystemConfig
   roadHeight: -0.15
   curb:
-    skirtOut: 0.35
+    skirtOut: 0.5
     skirtDown: 0.05
     gutterDepth: 0.175
     gutterWidth: 0.5
   defaultCornerSizes:
     SW:
-      xSize: 3
-      zSize: 3
+      xSize: 5
+      zSize: 5
     SE:
-      xSize: 3
-      zSize: 3
+      xSize: 5
+      zSize: 5
     NE:
-      xSize: 3
-      zSize: 3
+      xSize: 5
+      zSize: 5
     NW:
-      xSize: 3
-      zSize: 3
+      xSize: 5
+      zSize: 5
+  defaultFootpaths:
+    depths:
+      South: 5
+      East: 5
+      North: 5
+      West: 5
+    extends:
+      South:
+        LeftExtend: 1.5
+        RightExtend: 1.5
+      East:
+        LeftExtend: 1.5
+        RightExtend: 1.5
+      North:
+        LeftExtend: 1.5
+        RightExtend: 1.5
+      West:
+        LeftExtend: 1.5
+        RightExtend: 1.5

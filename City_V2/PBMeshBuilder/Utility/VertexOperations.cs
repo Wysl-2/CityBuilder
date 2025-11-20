@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 public static class VertexOperations
@@ -74,68 +75,74 @@ public static class VertexOperations
     // ------- Methods for operating on multiple arrays of vertices at once ------
 
     // Rotation
-      public static Vector3[][] RotateMany(Vector3[][] vertexSets, Quaternion rotation, Vector3 pivot, bool inPlace = false)
-    {
-        if (vertexSets == null || vertexSets.Length == 0)
-            throw new ArgumentException("Vertex set collection cannot be null or empty.", nameof(vertexSets));
-
-        Vector3[][] result = inPlace ? vertexSets : new Vector3[vertexSets.Length][];
-
-        for (int s = 0; s < vertexSets.Length; s++)
-        {
-            var set = vertexSets[s];
-            if (set == null || set.Length == 0)
-                throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
-
-            if (inPlace)
-            {
-                // Mutate the existing inner array
-                Rotate(set, rotation, pivot, inPlace: true);
-            }
-            else
-            {
-                // Produce a rotated copy of the inner array
-                result[s] = Rotate(set, rotation, pivot, inPlace: false);
-            }
-        }
-
-        return result;
-    }
 
     /// <summary>
     /// Rotates multiple vertex arrays around a pivot using Euler angles.
     /// </summary>
-    public static Vector3[][] RotateMany(Vector3[][] vertexSets, Vector3 eulerAngles, Vector3 pivot, bool inPlace = false)
-        => RotateMany(vertexSets, Quaternion.Euler(eulerAngles), pivot, inPlace);
+    public static List<Vector3[]> RotateMany(
+    List<Vector3[]> vertexSets, Quaternion rotation, Vector3 pivot, bool inPlace = false)
+    {
+        if (vertexSets == null || vertexSets.Count == 0)
+            throw new ArgumentException("Vertex set collection cannot be null or empty.", nameof(vertexSets));
+
+        if (inPlace)
+        {
+            for (int s = 0; s < vertexSets.Count; s++)
+            {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
+                Rotate(set, rotation, pivot, inPlace: true);
+            }
+            return vertexSets;
+        }
+        else
+        {
+            var result = new List<Vector3[]>(vertexSets.Count);
+            for (int s = 0; s < vertexSets.Count; s++)
+            {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
+                result.Add(Rotate(set, rotation, pivot, inPlace: false));
+            }
+            return result;
+        }
+    }
 
     // Translations
     /// <summary>
     /// Translates multiple vertex arrays by the same offset. Optionally in-place.
     /// </summary>
-    public static Vector3[][] TranslateMany(Vector3[][] vertexSets, Vector3 offset, bool inPlace = false)
+    public static List<Vector3[]> TranslateMany(
+        List<Vector3[]> vertexSets, Vector3 offset, bool inPlace = false)
     {
-        if (vertexSets == null || vertexSets.Length == 0)
+        if (vertexSets == null || vertexSets.Count == 0)
             throw new ArgumentException("Vertex set collection cannot be null or empty.", nameof(vertexSets));
 
-        Vector3[][] result = inPlace ? vertexSets : new Vector3[vertexSets.Length][];
-
-        for (int s = 0; s < vertexSets.Length; s++)
+        if (inPlace)
         {
-            var set = vertexSets[s];
-            if (set == null || set.Length == 0)
-                throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
-
-            if (inPlace)
+            for (int s = 0; s < vertexSets.Count; s++)
             {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
                 Translate(set, offset, inPlace: true);
             }
-            else
-            {
-                result[s] = Translate(set, offset, inPlace: false);
-            }
+            return vertexSets;
         }
-
-        return result;
+        else
+        {
+            var result = new List<Vector3[]>(vertexSets.Count);
+            for (int s = 0; s < vertexSets.Count; s++)
+            {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
+                result.Add(Translate(set, offset, inPlace: false));
+            }
+            return result;
+        }
     }
 
     /// <summary>
@@ -146,34 +153,40 @@ public static class VertexOperations
     /// <param name="targetPoint">World-space coordinate to move each set’s origin to.</param>
     /// <param name="inPlace">If true, modifies vertexSets directly.</param>
     /// <returns>A new translated array of vertex sets, or the same reference if inPlace is true.</returns>
-    public static Vector3[][] TranslateManyToPoint(Vector3[][] vertexSets, Vector3 targetPoint, bool inPlace = false)
+    public static List<Vector3[]> TranslateManyToPoint(
+        List<Vector3[]> vertexSets, Vector3 targetPoint, bool inPlace = false)
     {
-        if (vertexSets == null || vertexSets.Length == 0)
+        if (vertexSets == null || vertexSets.Count == 0)
             throw new ArgumentException("Vertex set collection cannot be null or empty.", nameof(vertexSets));
 
-        Vector3[][] result = inPlace ? vertexSets : new Vector3[vertexSets.Length][];
-
-        for (int s = 0; s < vertexSets.Length; s++)
+        if (inPlace)
         {
-            var set = vertexSets[s];
-            if (set == null || set.Length == 0)
-                throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
-
-            // Assume the "origin" of this set is the position of its first vertex (index 0).
-            // You could also compute the centroid if preferred.
-            Vector3 origin = set[0];
-            Vector3 offset = targetPoint - origin;
-
-            if (inPlace)
+            for (int s = 0; s < vertexSets.Count; s++)
             {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
+
+                Vector3 origin = set[0];
+                Vector3 offset = targetPoint - origin;
                 Translate(set, offset, inPlace: true);
             }
-            else
-            {
-                result[s] = Translate(set, offset, inPlace: false);
-            }
+            return vertexSets;
         }
+        else
+        {
+            var result = new List<Vector3[]>(vertexSets.Count);
+            for (int s = 0; s < vertexSets.Count; s++)
+            {
+                var set = vertexSets[s];
+                if (set == null || set.Length == 0)
+                    throw new ArgumentException($"Vertex set at index {s} cannot be null or empty.", nameof(vertexSets));
 
-        return result;
+                Vector3 origin = set[0];
+                Vector3 offset = targetPoint - origin;
+                result.Add(Translate(set, offset, inPlace: false));
+            }
+            return result;
+        }
     }
 }

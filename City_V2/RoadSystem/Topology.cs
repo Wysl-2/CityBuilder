@@ -3,6 +3,15 @@ using UnityEngine;
 // --- Topology Util ---
 public static class Topology
 {
+    public static RoadTopology Classify(bool N, bool E, bool S, bool W)
+    {
+        int cnt = (N ? 1 : 0) + (E ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0);
+        if (cnt == 4) return RoadTopology.X;
+        if (cnt == 0) return RoadTopology.Plaza;
+        if (cnt == 1) return RoadTopology.DeadEnd;
+        if (cnt == 2) return ((N && S) || (E && W)) ? RoadTopology.I : RoadTopology.L;
+        return RoadTopology.T; // cnt == 3
+    }
     public static Side Opposite(Side s) => s switch
     {
         Side.North => Side.South,

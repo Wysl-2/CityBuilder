@@ -30,7 +30,7 @@ public sealed class IntersectionModel
     {
         this.config = config;
         ConnectedNorth = N; ConnectedEast = E; ConnectedSouth = S; ConnectedWest = W;
-        RoadTopology = Classify(ConnectedNorth, ConnectedEast, ConnectedSouth, ConnectedWest);
+        RoadTopology = Topology.Classify(ConnectedNorth, ConnectedEast, ConnectedSouth, ConnectedWest);
         Size = size;
         RoadHeight = roadHeight;
 
@@ -147,15 +147,7 @@ public sealed class IntersectionModel
         );
     }
 
-    private static RoadTopology Classify(bool N, bool E, bool S, bool W)
-    {
-        int cnt = (N ? 1 : 0) + (E ? 1 : 0) + (S ? 1 : 0) + (W ? 1 : 0);
-        if (cnt == 4) return RoadTopology.X;
-        if (cnt == 0) return RoadTopology.Plaza;
-        if (cnt == 1) return RoadTopology.DeadEnd;
-        if (cnt == 2) return ((N && S) || (E && W)) ? RoadTopology.I : RoadTopology.L;
-        return RoadTopology.T; // cnt == 3
-    }
+
 
     private bool IsConnected(Side s) => s switch
     {
