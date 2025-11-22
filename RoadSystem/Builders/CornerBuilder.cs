@@ -46,13 +46,6 @@ public static class CornerModule
             var faces = new List<Vector3[]>(capacity: 11);
 
             // Canonical local: +x/+z are inward -- invert vertex placement for NW and SE corners
-            // var qLocal = new Quad(vertices: new[]
-            // {
-            //     new Vector3(0,0,0),
-            //     new Vector3(sx,0,0),
-            //     new Vector3(sx,0,sz),
-            //     new Vector3(0,0,sz),
-            // });
             var qLocal = MakeQuadXZ(0f, sx, 0f, sz, 0f);
 
             // Skirts from inner edges:
@@ -62,9 +55,6 @@ public static class CornerModule
             var e2b = qLocal[3];  // end of edge 2 (v3)
             var skirtX = ExtrusionUtil.ExtrudeEdgeOutDown(e1a, e1b, Vector3.right,   skirtOut, skirtDown);
             var skirtZ = ExtrusionUtil.ExtrudeEdgeOutDown(e2a, e2b, Vector3.forward, skirtOut, skirtDown);
-
-            // var skirtX = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(1, Vector3.right, skirtOut, skirtDown));
-            // var skirtZ = new Quad(vertices: qLocal.ExtrudeEdgeOutDown(2, Vector3.forward, skirtOut, skirtDown));
 
             var triangleCap = new Vector3[] { qLocal[2], skirtX[2], skirtZ[1] };
 
@@ -105,7 +95,6 @@ public static class CornerModule
 
             return faces;
 
-            //return new Vector3[][] { qLocal.Vertices, skirtX.Vertices, skirtZ.Vertices, triangleCap, gutterApronX, gutterApronZ, cornerQuadCap, gutterSkirtX, gutterSkirtZ, gutterSkirtCap, roadTriangleCap };
         }
         var cornerGeometry = BuildGeometry();
 
@@ -131,9 +120,14 @@ public static class CornerModule
 
 
         var placedLocal  = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
-        var placedWorld  = VertexOperations.TranslateMany(placedLocal, transform.position);
 
-        builder.AddFaces(placedWorld); // To Do: Change PBMeshBuilder to use List<Vector3[]> instead of Vector3[][]
+        // --- worldRotation: align the entire corner to the GameObject’s rotation
+        var worldRotation  = transform.rotation;
+        var finalPlacement  = VertexOperations.RotateMany(placedLocal, worldRotation , Vector3.zero);
+
+        var placedWorld  = VertexOperations.TranslateMany(finalPlacement, transform.position);
+
+        builder.AddFaces(placedWorld);
 
     }
 
@@ -212,11 +206,16 @@ public static class CornerModule
             default:          euler = new Vector3(0,-270, 0);  tx = new Vector3(0,      0, size.y); break; // NW
         }
 
-        var q           = Quaternion.Euler(euler);
-        var rotated     = VertexOperations.RotateMany(faces, q, Vector3.zero);
-        var placedLocal = VertexOperations.TranslateMany(rotated, tx);
-        var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
+        // 1) rotate/translate into its intersection slot (localRotation)
+        var localRotation = Quaternion.Euler(euler);
+        var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
+        var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
 
-        builder.AddFaces(placedWorld); // assumes PBMeshBuilder.AddFaces(List<Vector3[]>) exists
+        // 2) align with the GameObject (worldRotation), then translate to world
+        var worldRotation = transform.rotation;
+        var withRotation  = VertexOperations.RotateMany(placedLocal, worldRotation, Vector3.zero);
+        var placedWorld   = VertexOperations.TranslateMany(withRotation, transform.position);
+
+        builder.AddFaces(placedWorld);
     }
 }

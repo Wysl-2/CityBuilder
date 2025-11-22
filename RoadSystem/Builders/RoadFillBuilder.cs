@@ -44,8 +44,9 @@ public static class RoadFillModule
         if (m.ConnectedWest)  faces.Add(QuadXZ(0f, xL, zB, zT, RH));           // West band
         if (m.ConnectedEast)  faces.Add(QuadXZ(xR, m.Size.x, zB, zT, RH));     // East band
 
-        // Place (no rotation needed; apexes are already in intersection-local)
-        var placed = VertexOperations.TranslateMany(faces, t.position);
+         // worldRotation + translate
+        var withRotation = VertexOperations.RotateMany(faces, t.rotation, Vector3.zero);
+        var placed       = VertexOperations.TranslateMany(withRotation, t.position);
 
         builder.AddFaces(placed);
     }

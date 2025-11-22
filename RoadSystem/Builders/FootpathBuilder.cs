@@ -33,14 +33,6 @@ public static class FootpathModule
         float y  = 0f;        // local y; world Y added at final translate
 
         // ---- 0) Footpath slab (+Z inward) ------------------------------------
-        // var pathBase = new Quad(new[]
-        // {
-        //     new Vector3(xL, y, z0), // v0
-        //     new Vector3(xR, y, z0), // v1
-        //     new Vector3(xR, y, z1), // v2  (inner/top edge v2->v3)
-        //     new Vector3(xL, y, z1), // v3
-        // });
-
         var pathBase = new Vector3[]
         {
             new Vector3(xL, y, z0), // v0
@@ -87,10 +79,15 @@ public static class FootpathModule
             gutterSkirtToRoad
         };
 
-        var (rot, tx)   = PlacementFor(side, model.Size);     // Quaternion + translation
-        var rotated     = VertexOperations.RotateMany(faces, rot, Vector3.zero);
-        var placedLocal = VertexOperations.TranslateMany(rotated, tx);
-        var placedWorld = VertexOperations.TranslateMany(placedLocal, transform.position);
+        var (rot, tx) = PlacementFor(side, model.Size); // this is your localRotation
+        var localRotation = rot;
+        var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
+        var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
+
+        // then apply the worldRotation (the transform’s own rotation)
+        var worldRotation = transform.rotation;
+        var withRotation  = VertexOperations.RotateMany(placedLocal, worldRotation, Vector3.zero);
+        var placedWorld   = VertexOperations.TranslateMany(withRotation, transform.position);
 
         builder.AddFaces(placedWorld);
     }
