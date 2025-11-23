@@ -9,15 +9,15 @@ MonoBehaviour:
   m_GameObject: {fileID: 0}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: c5c50892f86ea59408949038d5aa63af, type: 3}
+  m_Script: {fileID: 11500000, guid: e34f9a37eaaa39c40ac5d768b4731569, type: 3}
   m_Name: RoadSystemConfig
   m_EditorClassIdentifier: Assembly-CSharp::RoadSystemConfig
   roadHeight: -0.15
   curb:
-    skirtOut: 0.5
+    skirtOut: 0.35
     skirtDown: 0.05
-    gutterDepth: 0.175
-    gutterWidth: 0.5
+    gutterDepth: 0.2
+    gutterWidth: 0.25
   defaultCornerSizes:
     SW:
       xSize: 5

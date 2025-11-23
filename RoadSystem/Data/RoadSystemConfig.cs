@@ -4,7 +4,10 @@ using UnityEngine;
 public sealed class RoadSystemConfig : ScriptableObject
 {
     [Header("Defaults applied to all children")]
+    public Material defaultMaterial;
     public float roadHeight = 0f;
+    public Vector2 defaultSize = new(30f, 30f);
+
     public CurbGutter curb = CurbGutter.Default();
 
     [Header("Default Corner Footpath Size (per-corner)")]
