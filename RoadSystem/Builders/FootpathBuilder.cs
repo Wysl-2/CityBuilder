@@ -81,19 +81,6 @@ public static class FootpathModule
             gutterSkirtToRoad
         };
 
-        // var (rot, tx) = PlacementFor(side, model.Size); // this is your localRotation
-        // var localRotation = rot;
-        // var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
-        // var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
-
-        // var centerOffset = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
-        // var centeredLocal = VertexOperations.TranslateMany(placedLocal, centerOffset);
-
-        // // then apply the worldRotation (the transform’s own rotation)
-        // var worldRotation = transform.rotation;
-        // var rotatedWorld  = VertexOperations.RotateMany(centeredLocal, worldRotation, Vector3.zero);
-        // var placedWorld   = VertexOperations.TranslateMany(rotatedWorld, transform.position);
-
         var (rot, tx) = PlacementFor(side, model.Size);
         var localRotation = rot;
         var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);

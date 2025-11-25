@@ -39,9 +39,26 @@ public class RoadSystemAuthoringWindow : EditorWindow
         if (config)
         {
             EditorGUILayout.LabelField("Config Defaults", EditorStyles.boldLabel);
-            config.defaultSize = EditorGUILayout.Vector2Field("Default Size", config.defaultSize);
-            config.roadHeight  = EditorGUILayout.FloatField("Road Height", config.roadHeight);
-            config.defaultMaterial = (Material)EditorGUILayout.ObjectField("Material", config.defaultMaterial, typeof(Material), false);
+
+            // Intersection
+            EditorGUILayout.LabelField("Intersection Defaults", EditorStyles.boldLabel);
+            config.defaultIntersectionSize =
+                EditorGUILayout.Vector2Field("Intersection Size (X,Z)", config.defaultIntersectionSize);
+
+            EditorGUILayout.Space(4);
+
+            // Road
+            EditorGUILayout.LabelField("Road Defaults", EditorStyles.boldLabel);
+            config.defaultRoad.width  = EditorGUILayout.FloatField("Road Width",  config.defaultRoad.width);
+            config.defaultRoad.length = EditorGUILayout.FloatField("Road Length", config.defaultRoad.length);
+
+            EditorGUILayout.Space(4);
+
+            // Shared
+            EditorGUILayout.LabelField("Shared", EditorStyles.boldLabel);
+            config.roadHeight = EditorGUILayout.FloatField("Road Height", config.roadHeight);
+            config.defaultMaterial = (Material)EditorGUILayout.ObjectField(
+                "Material", config.defaultMaterial, typeof(Material), false);
 
             if (GUI.changed)
                 EditorUtility.SetDirty(config);
@@ -115,15 +132,11 @@ public class RoadSystemAuthoringWindow : EditorWindow
             {
                 var road = first.AddComponent<ProceduralRoad>();
 
-                // Use config defaults for dimensions & material
-                // Interpret defaultSize.x as width, defaultSize.y as length
-                road.width      = config.defaultSize.x;
-                road.length     = config.defaultSize.y;
+                road.width      = config.defaultRoad.width;
+                road.length     = config.defaultRoad.length;
                 road.RoadHeight = config.roadHeight;
                 road.material   = config.defaultMaterial;
-
-                // Axis default (RoadAxis.Z) is fine, or set explicitly if you want
-                // road.Axis = RoadAxis.Z;
+                // road.Axis      = RoadAxis.Z; // default already
 
                 road.Rebuild();
                 break;
@@ -133,12 +146,10 @@ public class RoadSystemAuthoringWindow : EditorWindow
             {
                 var pi = first.AddComponent<ProceduralIntersection>();
 
-                // Use intersection defaults from config
-                pi.Size       = config.defaultSize;
+                pi.Size       = config.defaultIntersectionSize;
                 pi.RoadHeight = config.roadHeight;
                 pi.material   = config.defaultMaterial;
 
-                // Apply shared defaults (curb, corner sizes, footpaths, etc.)
                 if (rsm.config)
                     pi.ApplySharedDefaults(rsm.config);
 

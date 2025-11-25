@@ -103,7 +103,7 @@ public class ProceduralRoadHandles : Editor
 
         if (cfg)
         {
-            pi.Size       = cfg.defaultSize;
+            pi.Size       = cfg.defaultIntersectionSize;
             pi.RoadHeight = cfg.roadHeight;
             pi.material   = cfg.defaultMaterial;
             pi.ApplySharedDefaults(cfg);

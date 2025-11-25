@@ -216,22 +216,6 @@ public static class CornerModule
             default:          euler = new Vector3(0,-270, 0);  tx = new Vector3(0,      0, size.y); break; // NW
         }
 
-        // // 1) rotate/translate into its intersection slot (localRotation)
-        // var localRotation = Quaternion.Euler(euler);
-        // var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
-        // var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
-
-        // // NEW: recenter from SW-origin (0..Size) to pivot-at-center
-        // var centerOffset = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
-        // var centeredLocal = VertexOperations.TranslateMany(placedLocal, centerOffset);
-
-        // // worldRotation: align to GameObject
-        // var worldRotation = transform.rotation;
-        // var rotatedWorld = VertexOperations.RotateMany(centeredLocal, worldRotation, Vector3.zero);
-
-        // // translate to world
-        // var placedWorld = VertexOperations.TranslateMany(rotatedWorld, transform.position);
-
         var localRotation = Quaternion.Euler(euler);
         var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
         var placedLocal   = VertexOperations.TranslateMany(rotated, tx);

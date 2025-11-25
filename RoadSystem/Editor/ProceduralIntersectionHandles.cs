@@ -132,9 +132,9 @@ void SpawnAdjacent(ProceduralIntersection src, Side side)
 
     if (cfg)
     {
-        // use config defaults (same mapping you use elsewhere)
-        pr.width      = cfg.defaultSize.x;
-        pr.length     = cfg.defaultSize.y;
+        // use road defaults from config
+        pr.width      = cfg.defaultRoad.width;
+        pr.length     = cfg.defaultRoad.length;
         pr.RoadHeight = cfg.roadHeight;
         pr.material   = cfg.defaultMaterial;
     }

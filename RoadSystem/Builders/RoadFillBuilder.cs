@@ -44,14 +44,6 @@ public static class RoadFillModule
         if (m.ConnectedWest)  faces.Add(QuadXZ(0f, xL, zB, zT, RH));           // West band
         if (m.ConnectedEast)  faces.Add(QuadXZ(xR, m.Size.x, zB, zT, RH));     // East band
 
-        // // Recenter 0..Size tile around pivot
-        // var centerOffset = new Vector3(-m.Size.x * 0.5f, 0f, -m.Size.y * 0.5f);
-        // var centered = VertexOperations.TranslateMany(faces, centerOffset);
-
-        // // worldRotation + translate
-        // var rotatedWorld = VertexOperations.RotateMany(centered, t.rotation, Vector3.zero);
-        // var placed       = VertexOperations.TranslateMany(rotatedWorld, t.position);
-
         var centerOffset = new Vector3(-m.Size.x * 0.5f, 0f, -m.Size.y * 0.5f);
         var centered = VertexOperations.TranslateMany(faces, centerOffset);
 
