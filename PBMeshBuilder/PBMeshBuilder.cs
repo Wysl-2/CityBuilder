@@ -236,62 +236,7 @@ public class PBMeshBuilder
         }
     }
 
-    /// <summary>
-    /// Builds and returns a ProBuilderMesh with the collected vertices and faces.
-    /// </summary>
-    public ProBuilderMesh Build(Material[] materials = null, Transform parent = null, bool refresh = true)
-    {
-        var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
 
-        if(parent != null)
-        {
-            var t = pb.transform;
-            t.SetParent(parent);
-        }
-
-        var groups = new SharedVertex[positions.Count];
-        for (int i = 0; i < positions.Count; i++)
-            groups[i] = new SharedVertex(new[] { i });
-        pb.sharedVertices = groups;
-
-        if (materials != null && materials.Length > 0)
-        {
-            var facesBySubmesh = new Dictionary<int, List<Face>>();
-            foreach (var face in faces)
-            {
-                int submeshIndex = face.submeshIndex;
-                if (submeshIndex >= materials.Length)
-                    Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
-                if (!facesBySubmesh.ContainsKey(submeshIndex))
-                    facesBySubmesh[submeshIndex] = new List<Face>();
-                facesBySubmesh[submeshIndex].Add(face);
-            }
-
-            foreach (var kvp in facesBySubmesh)
-            {
-                int submeshIndex = kvp.Key;
-                var submeshFaces = kvp.Value;
-                Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
-                if (material != null)
-                    pb.SetMaterial(submeshFaces, material);
-                else
-                    Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
-            }
-
-            var renderer = pb.GetComponent<MeshRenderer>();
-            renderer.sharedMaterials = materials;
-        }
-
-        if (refresh)
-        {
-            pb.ToMesh();
-            pb.Refresh(RefreshMask.All);
-        }
-
-        bins.Clear();
-        vertexToUvGroups.Clear();
-        return pb;
-    }
 
     private static Vector3 ComputeFaceNormal(in Vector3 a, in Vector3 b, in Vector3 c)
     {
@@ -338,188 +283,133 @@ public class PBMeshBuilder
 
         return idx;
     }
+
+        /// <summary>
+    /// Builds and returns a ProBuilderMesh with the collected vertices and faces.
+    /// </summary>
+    /// 
+    public ProBuilderMesh Build(Material[] materials = null, Transform host = null, bool refresh = true)
+{
+    ProBuilderMesh pb;
+
+    if (host != null)
+    {
+        // Build / reuse the ProBuilderMesh component directly on the host GameObject
+        pb = host.GetComponent<ProBuilderMesh>();
+        if (pb == null)
+            pb = host.gameObject.AddComponent<ProBuilderMesh>();
+
+        // Clear any existing geometry
+        pb.Clear();
+
+        // Assign positions and faces from the builder
+        pb.positions = new System.Collections.Generic.List<Vector3>(positions);
+        pb.faces     = new System.Collections.Generic.List<Face>(faces);
+    }
+    else
+    {
+        // Fallback: keep old behaviour when no host is supplied
+        pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
+    }
+
+    // Set sharedVertices so every vertex is its own shared index (your existing logic)
+    var groups = new SharedVertex[positions.Count];
+    for (int i = 0; i < positions.Count; i++)
+        groups[i] = new SharedVertex(new[] { i });
+    pb.sharedVertices = groups;
+
+    // Materials / submeshes (unchanged)
+    if (materials != null && materials.Length > 0)
+    {
+        var facesBySubmesh = new Dictionary<int, List<Face>>();
+        foreach (var face in faces)
+        {
+            int submeshIndex = face.submeshIndex;
+            if (submeshIndex >= materials.Length)
+                Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
+            if (!facesBySubmesh.ContainsKey(submeshIndex))
+                facesBySubmesh[submeshIndex] = new List<Face>();
+            facesBySubmesh[submeshIndex].Add(face);
+        }
+
+        foreach (var kvp in facesBySubmesh)
+        {
+            int submeshIndex = kvp.Key;
+            var submeshFaces = kvp.Value;
+            Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
+            if (material != null)
+                pb.SetMaterial(submeshFaces, material);
+            else
+                Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
+        }
+
+        var renderer = pb.GetComponent<MeshRenderer>();
+        renderer.sharedMaterials = materials;
+    }
+
+    if (refresh)
+    {
+        pb.ToMesh();
+        pb.Refresh(RefreshMask.All);
+    }
+
+    bins.Clear();
+    vertexToUvGroups.Clear();
+    return pb;
 }
 
-// public struct Quad
-// {
-//     public Vector3[] Vertices { get; set; }
-//     public Winding Winding { get; }
-//     public bool Diag02 { get; }
-//     public int SubmeshIndex { get; }
-//     public int SmoothingGroup { get; }
-//     public int UVGroup { get; }
-//     public int[] DisconnectedVertices { get; }
+    // public ProBuilderMesh Build(Material[] materials = null, Transform parent = null, bool refresh = true)
+    // {
+    //     var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
 
-//     /// <summary>
-//     /// Creates a quad with specified vertices and properties.
-//     /// </summary>
-//     public Quad(Vector3[] vertices, Winding winding = Winding.CW, bool diag02 = true, int submeshIndex = 0, int smoothingGroup = 0, int uvGroup = 0, int[] disconnectedVertices = null)
-//     {
-//         if (vertices == null || vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(vertices));
+    //     if(parent != null)
+    //     {
+    //         var t = pb.transform;
+    //         t.SetParent(parent);
+    //     }
 
-//         Vertices = vertices;
-//         Winding = winding;
-//         Diag02 = diag02;
-//         SubmeshIndex = submeshIndex;
-//         SmoothingGroup = smoothingGroup;
-//         UVGroup = uvGroup;
-//         DisconnectedVertices = disconnectedVertices;
-//     }
+    //     var groups = new SharedVertex[positions.Count];
+    //     for (int i = 0; i < positions.Count; i++)
+    //         groups[i] = new SharedVertex(new[] { i });
+    //     pb.sharedVertices = groups;
 
-//     public Vector3[] ExtrudeEdge(int edgeIndex, Vector3 direction, float distance)
-//     {
-//         if (edgeIndex < 0 || edgeIndex > 3)
-//             throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
-//         if (direction == Vector3.zero)
-//             throw new ArgumentException("Direction cannot be zero.", nameof(direction));
+    //     if (materials != null && materials.Length > 0)
+    //     {
+    //         var facesBySubmesh = new Dictionary<int, List<Face>>();
+    //         foreach (var face in faces)
+    //         {
+    //             int submeshIndex = face.submeshIndex;
+    //             if (submeshIndex >= materials.Length)
+    //                 Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
+    //             if (!facesBySubmesh.ContainsKey(submeshIndex))
+    //                 facesBySubmesh[submeshIndex] = new List<Face>();
+    //             facesBySubmesh[submeshIndex].Add(face);
+    //         }
 
-//         Vector3 a = Vertices[edgeIndex];
-//         Vector3 b = Vertices[(edgeIndex + 1) % 4];
-//         Vector3 c = a + direction.normalized * distance;
-//         Vector3 d = b + direction.normalized * distance;
+    //         foreach (var kvp in facesBySubmesh)
+    //         {
+    //             int submeshIndex = kvp.Key;
+    //             var submeshFaces = kvp.Value;
+    //             Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
+    //             if (material != null)
+    //                 pb.SetMaterial(submeshFaces, material);
+    //             else
+    //                 Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
+    //         }
 
-//         if (Winding == Winding.CW)
-//             return new Vector3[] { a, c, d, b }; // Fixed: v0, v0+offset, v1+offset, v1
-//         else
-//             return new Vector3[] { a, b, d, c }; // CCW: v0, v1, v1+offset, v0+offset
-//     }
+    //         var renderer = pb.GetComponent<MeshRenderer>();
+    //         renderer.sharedMaterials = materials;
+    //     }
 
-//     public Vector3[] ExtrudeEdgeOffset(int edgeIndex, Vector3 offset)
-//     {
-//         if (edgeIndex < 0 || edgeIndex > 3)
-//             throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
+    //     if (refresh)
+    //     {
+    //         pb.ToMesh();
+    //         pb.Refresh(RefreshMask.All);
+    //     }
 
-//         Vector3 a = Vertices[edgeIndex];
-//         Vector3 b = Vertices[(edgeIndex + 1) % 4];
-//         Vector3 a2 = a + offset;
-//         Vector3 b2 = b + offset;
+    //     bins.Clear();
+    //     vertexToUvGroups.Clear();
+    //     return pb;
+    // }
+}
 
-//         return (Winding == Winding.CW)
-//             ? new[] { a, a2, b2, b }
-//             : new[] { a, b, b2, a2 };
-//     }
-
-//     public Vector3[] ExtrudeEdgeOutAndVertical(
-//     int edgeIndex,
-//     Vector3 outward,
-//     float outDistance,
-//     float verticalAmount,
-//     Vector3 upAxis = default)
-//     {
-//         if (edgeIndex < 0 || edgeIndex > 3)
-//             throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
-
-//         if (upAxis == default) upAxis = Vector3.up;
-//         var up = upAxis.normalized;
-
-//         // Project outward onto plane perpendicular to up so it's purely horizontal
-//         var outwardProj = outward - Vector3.Dot(outward, up) * up;
-//         var sqrMag = outwardProj.sqrMagnitude;
-//         if (sqrMag < 1e-12f)
-//             throw new ArgumentException("Outward must have a non-zero horizontal component.", nameof(outward));
-
-//         var outDir = outwardProj / Mathf.Sqrt(sqrMag);
-
-//         // Edge endpoints (top edge)
-//         Vector3 a = Vertices[edgeIndex];
-//         Vector3 b = Vertices[(edgeIndex + 1) % 4];
-
-//         // Build the offset (horizontal out + vertical)
-//         Vector3 offset = outDir * outDistance + up * verticalAmount;
-
-//         // Bottom edge (extruded)
-//         Vector3 a2 = a + offset;
-//         Vector3 b2 = b + offset;
-
-//         // Match your existing winding convention for side faces
-//         if (Winding == Winding.CW)
-//             return new[] { a, a2, b2, b };   // t0, b0, b1, t1
-//         else
-//             return new[] { a, b, b2, a2 };   // t0, t1, b1, b0
-//     }
-
-//     /// <summary>
-//     /// Convenience: extrude "out and DOWN" by positive distances (downAmount >= 0).
-//     /// Equivalent to ExtrudeEdgeOutAndVertical(edgeIndex, outward, outAmount, -downAmount).
-//     /// </summary>
-//     public Vector3[] ExtrudeEdgeOutDown(
-//         int edgeIndex,
-//         Vector3 outward,
-//         float outAmount,
-//         float downAmount,
-//         Vector3 upAxis = default)
-//     {
-//         if (downAmount < 0f)
-//             throw new ArgumentException("downAmount should be non-negative; use ExtrudeEdgeOutAndVertical for signed values.", nameof(downAmount));
-
-//         return ExtrudeEdgeOutAndVertical(edgeIndex, outward, outAmount, -downAmount, upAxis);
-//     }
-
-// public Vector3[] ExtrudeEdgeOutHeight(int edgeIndex, float outAmount, float heightAmount)
-// {
-//     if (edgeIndex < 0 || edgeIndex > 3)
-//         throw new ArgumentException("Edge index must be between 0 and 3.", nameof(edgeIndex));
-
-//     // Edge endpoints
-//     Vector3 a = Vertices[edgeIndex];
-//     Vector3 b = Vertices[(edgeIndex + 1) % 4];
-
-//     // Face normal (from the first three vertices as stored).
-//     // This may point up or down depending on Winding; that's fine—we use it consistently.
-//     Vector3 n = Vector3.Cross(Vertices[1] - Vertices[0], Vertices[2] - Vertices[0]);
-//     float nLen = n.magnitude;
-//     if (nLen < 1e-12f) throw new InvalidOperationException("Degenerate quad: normal is zero.");
-//     n /= nLen;
-
-//     // Edge (boundary) direction
-//     Vector3 t = b - a;
-//     float tLen = t.magnitude;
-//     if (tLen < 1e-12f) throw new InvalidOperationException("Degenerate edge: zero length.");
-//     t /= tLen;
-
-//     // Outward in the quad's plane, away from polygon interior.
-//     // For a CCW polygon, outward = cross(n, t). For CW, outward = cross(t, n).
-//     Vector3 outward = (Winding == Winding.CCW) ? Vector3.Cross(n, t) : Vector3.Cross(t, n);
-//     float oLen = outward.magnitude;
-//     if (oLen < 1e-12f) throw new InvalidOperationException("Cannot compute outward direction (degenerate).");
-//     outward /= oLen;
-
-//     // Final offset for the extrusion
-//     Vector3 offset = outward * outAmount + n * heightAmount;
-
-//     // Bottom edge (extruded)
-//     Vector3 a2 = a + offset;
-//     Vector3 b2 = b + offset;
-
-//     // Return with ordering consistent with this quad's Winding
-//     return (Winding == Winding.CW)
-//         ? new[] { a, a2, b2, b }   // t0, b0, b1, t1
-//         : new[] { a, b, b2, a2 };  // t0, t1, b1, b0
-// }
-
-// }
-
-// public struct Triangle
-// {
-//     public Vector3[] Vertices;
-//     public Winding Winding;
-//     public int SubmeshIndex;
-//     public int SmoothingGroup;
-//     public int UVGroup;
-//     public int[] DisconnectedVertices { get; }
-
-//     /// <summary>
-//     /// Creates a triangle with specified vertices and properties.
-//     /// </summary>
-//     public Triangle(Vector3[] vertices, Winding winding = Winding.CW, int submeshIndex = 0, int smoothingGroup = 0, int uvGroup = 0, int[] disconnectedVertices = null)
-//     {
-//         if (vertices == null || vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(vertices));
-
-//         Vertices = vertices;
-//         Winding = winding;
-//         SubmeshIndex = submeshIndex;
-//         SmoothingGroup = smoothingGroup;
-//         UVGroup = uvGroup;
-//         DisconnectedVertices = disconnectedVertices;
-//     }
-// }

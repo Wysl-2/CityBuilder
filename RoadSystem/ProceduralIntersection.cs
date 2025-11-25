@@ -131,10 +131,13 @@ public class ProceduralIntersection : MonoBehaviour
         Gizmos.color  = Color.red;
         Gizmos.matrix = Matrix4x4.TRS(transform.position, transform.rotation, Vector3.one);
 
-        var a = new Vector3(0f,      0f,      0f);
-        var b = new Vector3(Size.x,  0f,      0f);
-        var c = new Vector3(Size.x,  0f,      Size.y);
-        var d = new Vector3(0f,      0f,      Size.y);
+        var hx = Size.x * 0.5f;
+        var hz = Size.y * 0.5f;
+
+        var a = new Vector3(-hx, 0f, -hz);
+        var b = new Vector3( hx, 0f, -hz);
+        var c = new Vector3( hx, 0f,  hz);
+        var d = new Vector3(-hx, 0f,  hz);
 
         Gizmos.DrawLine(a, b);
         Gizmos.DrawLine(b, c);
@@ -143,10 +146,11 @@ public class ProceduralIntersection : MonoBehaviour
 
         if (Model != null)
         {
-            Gizmos.DrawWireSphere(Model.CornerSW.apex, 0.10f);
-            Gizmos.DrawWireSphere(Model.CornerSE.apex, 0.10f);
-            Gizmos.DrawWireSphere(Model.CornerNW.apex, 0.10f);
-            Gizmos.DrawWireSphere(Model.CornerNE.apex, 0.10f);
+            var centerOffset = new Vector3(-Size.x * 0.5f, 0f, -Size.y * 0.5f);
+            Gizmos.DrawWireSphere(Model.CornerSW.apex + centerOffset, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerSE.apex + centerOffset, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerNW.apex + centerOffset, 0.10f);
+            Gizmos.DrawWireSphere(Model.CornerNE.apex + centerOffset, 0.10f);
         }
     }
 

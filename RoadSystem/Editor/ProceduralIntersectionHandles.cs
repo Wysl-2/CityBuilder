@@ -9,12 +9,14 @@ public class ProceduralIntersectionHandles : Editor
         var pi = (ProceduralIntersection)target;
         var t  = pi.transform;
         var size = pi.Size;
+        float hx = size.x * 0.5f;
+        float hz = size.y * 0.5f;
 
-        // Local midpoints of sides, then transform to world:
-        Vector3 localMidSouth = new Vector3(size.x * 0.5f, 0f, 0f);
-        Vector3 localMidEast  = new Vector3(size.x, 0f, size.y * 0.5f);
-        Vector3 localMidNorth = new Vector3(size.x * 0.5f, 0f, size.y);
-        Vector3 localMidWest  = new Vector3(0f, 0f, size.y * 0.5f);
+        // Local midpoints of sides, in centered frame (-hx..+hx, -hz..+hz)
+        Vector3 localMidSouth = new Vector3(0f,  0f, -hz);
+        Vector3 localMidEast  = new Vector3(hx,  0f,  0f);
+        Vector3 localMidNorth = new Vector3(0f,  0f,  hz);
+        Vector3 localMidWest  = new Vector3(-hx, 0f,  0f);
 
         DrawSpawnButton(pi, t.TransformPoint(localMidSouth), Vector3.back,  Side.South);
         DrawSpawnButton(pi, t.TransformPoint(localMidEast),  Vector3.right, Side.East);
@@ -31,26 +33,32 @@ public class ProceduralIntersectionHandles : Editor
         }
     }
 
-    void SpawnAdjacent(ProceduralIntersection src, Side side)
+// Editor/ProceduralIntersectionHandles.cs
+
+void SpawnAdjacent(ProceduralIntersection src, Side side)
+{
+    Undo.IncrementCurrentGroup();
+    var group = Undo.GetCurrentGroup();
+
+    var root = FindFirstObjectByType<RoadSystemManager>();
+    var cfg  = root ? root.config : null;
+
+    var size = src.Size;
+
+    // --- decide what to spawn based on authoring window ---
+    var pieceType = RoadSystemAuthoringWindow.CurrentPieceType;
+
+    if (pieceType == RoadPieceType.Intersection)
     {
-        Undo.IncrementCurrentGroup();
-        var group = Undo.GetCurrentGroup();
-
-        var root = FindFirstObjectByType<RoadSystemManager>();
-        var cfg  = root ? root.config : null;
-
-        var size = src.Size;
-
-        // local offset one tile away
+        // ORIGINAL INTERSECTION-TO-INTERSECTION BEHAVIOUR
         Vector3 localDelta = side switch
         {
-            Side.South => new Vector3(0f, 0f, -size.y),
-            Side.East  => new Vector3(size.x, 0f, 0f),
-            Side.North => new Vector3(0f, 0f,  size.y),
-            _          => new Vector3(-size.x,0f, 0f),
+            Side.South => new Vector3(0f,      0f, -size.y),
+            Side.East  => new Vector3(size.x,  0f,  0f),
+            Side.North => new Vector3(0f,      0f,  size.y),
+            _          => new Vector3(-size.x, 0f,  0f),
         };
 
-        // convert to world space relative to source rotation
         Vector3 worldDelta = src.transform.TransformVector(localDelta);
 
         var go = new GameObject("Intersection");
@@ -82,6 +90,73 @@ public class ProceduralIntersectionHandles : Editor
         EditorUtility.SetDirty(src);
         EditorUtility.SetDirty(pi.gameObject);
         UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(go.scene);
+        return;
     }
+
+    // --- ROAD CASE: pivot at side midpoint, no extra tile offset ---
+
+    float hx = size.x * 0.5f;
+    float hz = size.y * 0.5f;
+
+    // local midpoints of each side (match OnSceneGUI)
+    Vector3 localMid = side switch
+    {
+        Side.South => new Vector3(0f,  0f, -hz),
+        Side.East  => new Vector3(hx,  0f,  0f),
+        Side.North => new Vector3(0f,  0f,  hz),
+        _          => new Vector3(-hx, 0f,  0f), // West
+    };
+
+    // outward direction in local space
+    Vector3 localOut = side switch
+    {
+        Side.South => Vector3.back,
+        Side.East  => Vector3.right,
+        Side.North => Vector3.forward,
+        _          => Vector3.left,
+    };
+
+    Vector3 worldMid = src.transform.TransformPoint(localMid);
+    Vector3 worldOut = src.transform.TransformDirection(localOut).normalized;
+
+    var roadGO = new GameObject("Road");
+    Undo.RegisterCreatedObjectUndo(roadGO, "Create Road");
+
+    roadGO.transform.SetParent(root ? root.transform : src.transform.parent, worldPositionStays:false);
+    roadGO.transform.position = worldMid;
+
+    // Align road so its length extends along worldOut
+    roadGO.transform.rotation = Quaternion.LookRotation(worldOut, src.transform.up);
+
+    var pr = roadGO.AddComponent<ProceduralRoad>();
+
+    if (cfg)
+    {
+        // use config defaults (same mapping you use elsewhere)
+        pr.width      = cfg.defaultSize.x;
+        pr.length     = cfg.defaultSize.y;
+        pr.RoadHeight = cfg.roadHeight;
+        pr.material   = cfg.defaultMaterial;
+    }
+    else
+    {
+        // fallback from intersection
+        pr.width      = size.x;
+        pr.length     = size.y;
+        pr.RoadHeight = src.RoadHeight;
+        pr.material   = src.material;
+    }
+
+    // Our ProceduralRoad builds geometry along +Z from the back edge pivot
+    pr.Axis = RoadAxis.Z;
+
+    pr.Rebuild();
+
+    Undo.CollapseUndoOperations(group);
+    EditorUtility.SetDirty(src);
+    EditorUtility.SetDirty(pr.gameObject);
+    UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(roadGO.scene);
+}
+
 
 }

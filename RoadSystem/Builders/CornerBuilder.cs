@@ -98,10 +98,10 @@ public static class CornerModule
         }
         var cornerGeometry = BuildGeometry();
 
+        var size = intersectionModel.Size;
         List<Vector3[]> ApplyRotationAndTranslationFor(CornerId id, List<Vector3[]> geo)
         {
             Vector3 euler, tx;
-            var size = intersectionModel.Size;
 
             switch (id)
             {
@@ -119,15 +119,25 @@ public static class CornerModule
         }
 
 
+        // var placedLocal  = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
+
+        // // NEW: recenter from SW-origin (0..Size) to pivot-at-center
+        // var centerOffset = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
+        // var centeredLocal = VertexOperations.TranslateMany(placedLocal, centerOffset);
+
+        // // --- worldRotation: align the entire corner to the GameObject’s rotation
+        // var worldRotation  = transform.rotation;
+        // var rotatedWorld  = VertexOperations.RotateMany(centeredLocal, worldRotation , Vector3.zero);
+
+        // var placedWorld  = VertexOperations.TranslateMany(rotatedWorld, transform.position);
+
         var placedLocal  = ApplyRotationAndTranslationFor(cornerId, cornerGeometry);
 
-        // --- worldRotation: align the entire corner to the GameObject’s rotation
-        var worldRotation  = transform.rotation;
-        var finalPlacement  = VertexOperations.RotateMany(placedLocal, worldRotation , Vector3.zero);
+        // Recenter from SW-origin (0..Size) to pivot-at-center; stay in local space
+        var centerOffset   = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
+        var centeredLocal  = VertexOperations.TranslateMany(placedLocal, centerOffset);
 
-        var placedWorld  = VertexOperations.TranslateMany(finalPlacement, transform.position);
-
-        builder.AddFaces(placedWorld);
+        builder.AddFaces(centeredLocal);
 
     }
 
@@ -206,16 +216,30 @@ public static class CornerModule
             default:          euler = new Vector3(0,-270, 0);  tx = new Vector3(0,      0, size.y); break; // NW
         }
 
-        // 1) rotate/translate into its intersection slot (localRotation)
+        // // 1) rotate/translate into its intersection slot (localRotation)
+        // var localRotation = Quaternion.Euler(euler);
+        // var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
+        // var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
+
+        // // NEW: recenter from SW-origin (0..Size) to pivot-at-center
+        // var centerOffset = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
+        // var centeredLocal = VertexOperations.TranslateMany(placedLocal, centerOffset);
+
+        // // worldRotation: align to GameObject
+        // var worldRotation = transform.rotation;
+        // var rotatedWorld = VertexOperations.RotateMany(centeredLocal, worldRotation, Vector3.zero);
+
+        // // translate to world
+        // var placedWorld = VertexOperations.TranslateMany(rotatedWorld, transform.position);
+
         var localRotation = Quaternion.Euler(euler);
         var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
         var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
 
-        // 2) align with the GameObject (worldRotation), then translate to world
-        var worldRotation = transform.rotation;
-        var withRotation  = VertexOperations.RotateMany(placedLocal, worldRotation, Vector3.zero);
-        var placedWorld   = VertexOperations.TranslateMany(withRotation, transform.position);
+        // Recenter to pivot-at-center, remain in local space
+        var centerOffset   = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
+        var centeredLocal  = VertexOperations.TranslateMany(placedLocal, centerOffset);
 
-        builder.AddFaces(placedWorld);
+        builder.AddFaces(centeredLocal);
     }
 }
