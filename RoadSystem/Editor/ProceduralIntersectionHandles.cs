@@ -132,19 +132,22 @@ void SpawnAdjacent(ProceduralIntersection src, Side side)
 
     if (cfg)
     {
-        // use road defaults from config
-        pr.width      = cfg.defaultRoad.width;
-        pr.length     = cfg.defaultRoad.length;
-        pr.RoadHeight = cfg.roadHeight;
-        pr.material   = cfg.defaultMaterial;
+        pr.width         = cfg.defaultRoad.width;
+        pr.length        = cfg.defaultRoad.length;
+        pr.footpathDepth = cfg.defaultRoad.footpathDepth;
+        pr.RoadHeight    = cfg.roadHeight;
+        pr.material      = cfg.defaultMaterial;
+        pr.curb          = cfg.curb;
     }
     else
     {
-        // fallback from intersection
-        pr.width      = size.x;
-        pr.length     = size.y;
-        pr.RoadHeight = src.RoadHeight;
-        pr.material   = src.material;
+        // fallback from intersection dimensions / material
+        pr.width         = size.x;
+        pr.length        = size.y;
+        pr.footpathDepth = cfg ? cfg.defaultRoad.footpathDepth : pr.footpathDepth; // or some fallback
+        pr.RoadHeight    = src.RoadHeight;
+        pr.material      = src.material;
+        pr.curb          = cfg ? cfg.curb : pr.curb;
     }
 
     // Our ProceduralRoad builds geometry along +Z from the back edge pivot

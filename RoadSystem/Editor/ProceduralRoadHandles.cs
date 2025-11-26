@@ -60,11 +60,13 @@ public class ProceduralRoadHandles : Editor
             go.transform.rotation = src.transform.rotation;
 
             var pr = go.AddComponent<ProceduralRoad>();
-            pr.length     = src.length;
-            pr.width      = src.width;
-            pr.RoadHeight = src.RoadHeight;
-            pr.material   = src.material;
-            pr.Axis       = src.Axis;
+            pr.length        = src.length;
+            pr.width         = src.width;
+            pr.footpathDepth = src.footpathDepth;
+            pr.RoadHeight    = src.RoadHeight;
+            pr.material      = src.material;
+            pr.Axis          = src.Axis;
+            pr.curb          = src.curb;
 
             pr.Rebuild();
 

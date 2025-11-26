@@ -11,23 +11,41 @@ public sealed class RoadSystemManager : MonoBehaviour
     public bool autoApplyOnValidate = true;
 
     [ContextMenu("Apply Defaults → Children")]
-    public void ApplyDefaultsToChildren()
+   public void ApplyDefaultsToChildren()
     {
         if (!config) return;
 
-        var nodes = GetComponentsInChildren<ProceduralIntersection>(true);
-        foreach (var n in nodes)
+        // Intersections
+        var intersections = GetComponentsInChildren<ProceduralIntersection>(true);
+        foreach (var n in intersections)
         {
             if (!n) continue;
             n.ApplySharedDefaults(config);
-#if UNITY_EDITOR
+    #if UNITY_EDITOR
             EditorUtility.SetDirty(n);
-#endif
+    #endif
         }
-#if UNITY_EDITOR
+
+        // Roads
+        var roads = GetComponentsInChildren<ProceduralRoad>(true);
+        foreach (var r in roads)
+        {
+            if (!r) continue;
+            r.width         = config.defaultRoad.width;
+            r.length        = config.defaultRoad.length;
+            r.footpathDepth = config.defaultRoad.footpathDepth;
+            r.RoadHeight    = config.roadHeight;
+            r.material      = config.defaultMaterial;
+            r.curb          = config.curb;
+    #if UNITY_EDITOR
+            EditorUtility.SetDirty(r);
+    #endif
+        }
+
+    #if UNITY_EDITOR
         if (!Application.isPlaying)
             EditorSceneManager.MarkSceneDirty(gameObject.scene);
-#endif
+    #endif
     }
 
 #if UNITY_EDITOR

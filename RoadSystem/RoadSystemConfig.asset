@@ -12,14 +12,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e34f9a37eaaa39c40ac5d768b4731569, type: 3}
   m_Name: RoadSystemConfig
   m_EditorClassIdentifier: Assembly-CSharp::RoadSystemConfig
-  defaultMaterial: {fileID: 2100000, guid: 836ee3dadc0c2864c972c6136507eac1, type: 2}
+  defaultMaterial: {fileID: 2100000, guid: 48bda3abb15da354f99b39198ba3bb34, type: 2}
   roadHeight: -0.15
-  defaultSize: {x: 30, y: 90}
+  defaultIntersectionSize: {x: 20, y: 20}
+  defaultRoad:
+    width: 20
+    length: 40
+    footpathDepth: 5
   curb:
-    skirtOut: 0.35
+    skirtOut: 0.25
     skirtDown: 0.05
-    gutterDepth: 0.15
-    gutterWidth: 0.3
+    gutterDepth: 0.175
+    gutterWidth: 0.35
   defaultCornerSizes:
     SW:
       xSize: 5

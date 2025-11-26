@@ -18,6 +18,10 @@ public class ProceduralRoad : MonoBehaviour
     public float   RoadHeight = 0f;
     public RoadAxis Axis = RoadAxis.Z;
 
+    [Header("Footpath / Curb")]
+    public float footpathDepth = 1.5f;
+    public CurbGutter curb = CurbGutter.Default();
+
     [Header("Material")]
     public Material material;
 
@@ -28,39 +32,60 @@ public class ProceduralRoad : MonoBehaviour
     {
         ClearBuilt();
 
-        List<Vector3[]> faces;
+        // Clamp to sane values
+        width         = Mathf.Max(0.01f, width);
+        length        = Mathf.Max(0.01f, length);
+        footpathDepth = Mathf.Clamp(footpathDepth, 0f, width * 0.5f);
 
-        if (Axis == RoadAxis.Z)
-        {
-            // Pivot centered on back edge
-            float x0 = -width * 0.5f;
-            float x1 =  width * 0.5f;
-            float z0 = 0f;
-            float z1 = length;
-
-            faces = new List<Vector3[]> { QuadXZ(x0, x1, z0, z1, RoadHeight) };
-        }
-        else // Axis == X
-        {
-            // Pivot centered on back edge, road extends +X
-            float x0 = 0f;
-            float x1 = length;
-            float z0 = -width * 0.5f;
-            float z1 =  width * 0.5f;
-
-            faces = new List<Vector3[]> { QuadXZ(x0, x1, z0, z1, RoadHeight) };
-        }
-
-        // // Apply world rotation & translation
-        // var worldRot = transform ? transform.rotation : Quaternion.identity;
-        // faces = VertexOperations.RotateMany(faces, worldRot, Vector3.zero);
-        // faces = VertexOperations.TranslateMany(faces, transform ? transform.position : Vector3.zero);
-
-        // Build PB mesh (unchanged)
         var builder = new PBMeshBuilder();
         var sinkTag = gameObject.AddComponent<FaceSinkTag>();
         builder.Sink = sinkTag;
-        builder.AddFaces(faces);
+
+        // 1) Footpaths + curb/gutter (local space, pivot = back edge centre)
+        RoadFootpathModule.Create(
+            builder,
+            width,
+            length,
+            RoadHeight,
+            footpathDepth,
+            curb,
+            Axis
+        );
+
+       // 2) Carriageway in the remaining centre area
+        var carriageFaces = new List<Vector3[]>();
+
+        // Total inset from each outer edge before the road surface starts
+        float inset = footpathDepth + curb.skirtOut + curb.gutterWidth;
+
+        if (Axis == RoadAxis.Z)
+        {
+            // Road runs along +Z, width along X, pivot at (0,0,0) at back centre.
+            float halfW = width * 0.5f;
+
+            float innerLeft  = -halfW + inset;
+            float innerRight =  halfW - inset;
+
+            // Optional safety clamp in case width is too small:
+            if (innerRight > innerLeft)
+                carriageFaces.Add(QuadXZ(innerLeft, innerRight, 0f, length, RoadHeight));
+        }
+        else // Axis == RoadAxis.X
+        {
+            // Road runs along +X, width along Z, pivot at (0,0,0) at back centre.
+            float halfW = width * 0.5f;
+
+            float innerBackZ  = -halfW + inset;
+            float innerFrontZ =  halfW - inset;
+
+            float x0 = 0f;
+            float x1 = length;
+
+            if (innerFrontZ > innerBackZ)
+                carriageFaces.Add(QuadXZ(x0, x1, innerBackZ, innerFrontZ, RoadHeight));
+        }
+
+        builder.AddFaces(carriageFaces);
 
         var mats = material ? new[] { material } : null;
         _builtPB = builder.Build(mats, transform);
@@ -72,6 +97,43 @@ public class ProceduralRoad : MonoBehaviour
         if (!Application.isPlaying)
             UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
     #endif
+    }
+
+    public void OnDrawGizmos()
+    {
+        if (!enabled) return;
+
+        Gizmos.color  = Color.red;
+        Gizmos.matrix = Matrix4x4.TRS(transform.position, transform.rotation, Vector3.one);
+
+        Vector3 bl, br, fl, fr; // back-left, back-right, front-left, front-right (local)
+
+        if (Axis == RoadAxis.Z)
+        {
+            // Road extends along +Z, pivot at back centre (0,0,0).
+            float halfW = width * 0.5f;
+
+            bl = new Vector3(-halfW, 0f, 0f);
+            br = new Vector3( halfW, 0f, 0f);
+            fl = new Vector3(-halfW, 0f, length);
+            fr = new Vector3( halfW, 0f, length);
+        }
+        else // RoadAxis.X
+        {
+            // Road extends along +X, width along Z, pivot at back centre (0,0,0).
+            float halfW = width * 0.5f;
+
+            bl = new Vector3(0f,      0f, -halfW);
+            br = new Vector3(0f,      0f,  halfW);
+            fl = new Vector3(length,  0f, -halfW);
+            fr = new Vector3(length,  0f,  halfW);
+        }
+
+        // Draw rectangle
+        Gizmos.DrawLine(bl, br);
+        Gizmos.DrawLine(br, fr);
+        Gizmos.DrawLine(fr, fl);
+        Gizmos.DrawLine(fl, bl);
     }
 
 

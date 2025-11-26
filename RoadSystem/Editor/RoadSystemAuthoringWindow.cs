@@ -51,14 +51,17 @@ public class RoadSystemAuthoringWindow : EditorWindow
             EditorGUILayout.LabelField("Road Defaults", EditorStyles.boldLabel);
             config.defaultRoad.width  = EditorGUILayout.FloatField("Road Width",  config.defaultRoad.width);
             config.defaultRoad.length = EditorGUILayout.FloatField("Road Length", config.defaultRoad.length);
+            config.defaultRoad.footpathDepth =
+                EditorGUILayout.FloatField("Footpath Depth", config.defaultRoad.footpathDepth);
 
             EditorGUILayout.Space(4);
 
-            // Shared
-            EditorGUILayout.LabelField("Shared", EditorStyles.boldLabel);
-            config.roadHeight = EditorGUILayout.FloatField("Road Height", config.roadHeight);
-            config.defaultMaterial = (Material)EditorGUILayout.ObjectField(
-                "Material", config.defaultMaterial, typeof(Material), false);
+            // Shared curb / gutter
+            EditorGUILayout.LabelField("Curb / Gutter", EditorStyles.boldLabel);
+            config.curb.skirtOut    = EditorGUILayout.FloatField("Skirt Out",    config.curb.skirtOut);
+            config.curb.skirtDown   = EditorGUILayout.FloatField("Skirt Down",   config.curb.skirtDown);
+            config.curb.gutterDepth = EditorGUILayout.FloatField("Gutter Depth", config.curb.gutterDepth);
+            config.curb.gutterWidth = EditorGUILayout.FloatField("Gutter Width", config.curb.gutterWidth);
 
             if (GUI.changed)
                 EditorUtility.SetDirty(config);
@@ -132,11 +135,12 @@ public class RoadSystemAuthoringWindow : EditorWindow
             {
                 var road = first.AddComponent<ProceduralRoad>();
 
-                road.width      = config.defaultRoad.width;
-                road.length     = config.defaultRoad.length;
-                road.RoadHeight = config.roadHeight;
-                road.material   = config.defaultMaterial;
-                // road.Axis      = RoadAxis.Z; // default already
+                road.width         = config.defaultRoad.width;
+                road.length        = config.defaultRoad.length;
+                road.footpathDepth = config.defaultRoad.footpathDepth;
+                road.RoadHeight    = config.roadHeight;
+                road.material      = config.defaultMaterial;
+                road.curb          = config.curb;
 
                 road.Rebuild();
                 break;
