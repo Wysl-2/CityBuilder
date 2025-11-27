@@ -17,8 +17,8 @@ MonoBehaviour:
   defaultIntersectionSize: {x: 20, y: 20}
   defaultRoad:
     width: 20
-    length: 40
-    footpathDepth: 5
+    length: 20
+    footpathDepth: 4
   curb:
     skirtOut: 0.25
     skirtDown: 0.05
@@ -26,23 +26,23 @@ MonoBehaviour:
     gutterWidth: 0.35
   defaultCornerSizes:
     SW:
-      xSize: 5
-      zSize: 5
+      xSize: 4
+      zSize: 4
     SE:
-      xSize: 5
-      zSize: 5
+      xSize: 4
+      zSize: 4
     NE:
-      xSize: 5
-      zSize: 5
+      xSize: 4
+      zSize: 4
     NW:
-      xSize: 5
-      zSize: 5
+      xSize: 4
+      zSize: 4
   defaultFootpaths:
     depths:
-      South: 5
-      East: 5
-      North: 5
-      West: 5
+      South: 4
+      East: 4
+      North: 4
+      West: 4
     extends:
       South:
         LeftExtend: 1.5

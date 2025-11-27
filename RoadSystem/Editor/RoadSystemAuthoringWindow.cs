@@ -16,6 +16,16 @@ public class RoadSystemAuthoringWindow : EditorWindow
 
     public static RoadPieceType CurrentPieceType { get; private set; } = RoadPieceType.Road;
 
+    // Creation overrides (editor-session only)
+    // These are now the single source of truth for dimensions.
+    static Vector2 intersectionSizeOverride = Vector2.zero;
+    static float   roadWidthOverride        = 0f;
+    static float   roadLengthOverride       = 0f;
+    static float   roadFootpathDepthOverride = 0f;
+
+    // Track seeding from config
+    static RoadSystemConfig lastSeedConfig;
+    static bool overridesSeededFromConfig = false;
 
     [MenuItem("Tools/CityBuilder/Road System Authoring")]
     static void Open() => GetWindow<RoadSystemAuthoringWindow>("Road System");
@@ -23,84 +33,159 @@ public class RoadSystemAuthoringWindow : EditorWindow
     void OnGUI()
     {
         EditorGUILayout.LabelField("Road System Config", EditorStyles.boldLabel);
-        config = (RoadSystemConfig)EditorGUILayout.ObjectField("Config Asset", config, typeof(RoadSystemConfig), false);
+
+        var newConfig = (RoadSystemConfig)EditorGUILayout.ObjectField(
+            "Config Asset", config, typeof(RoadSystemConfig), false
+        );
+
+        // Detect config change to seed overrides once per config
+        if (newConfig != config)
+        {
+            config = newConfig;
+
+            if (config)
+            {
+                SeedOverridesFromConfig(config);
+                lastSeedConfig = config;
+                overridesSeededFromConfig = true;
+            }
+        }
 
         using (new EditorGUILayout.HorizontalScope())
         {
             if (GUILayout.Button("Create New Config Asset"))
-                config = CreateConfigAsset();
+            {
+                var created = CreateConfigAsset();
+                if (created)
+                {
+                    config = created;
+                    SeedOverridesFromConfig(config);
+                    lastSeedConfig = config;
+                    overridesSeededFromConfig = true;
+                }
+            }
 
             using (new EditorGUI.DisabledScope(!config))
-                if (GUILayout.Button("Open Config")) Selection.activeObject = config;
+            {
+                if (GUILayout.Button("Open Config"))
+                    Selection.activeObject = config;
+            }
         }
 
         EditorGUILayout.Space(10);
 
-        if (config)
+        if (!config)
         {
-            EditorGUILayout.LabelField("Config Defaults", EditorStyles.boldLabel);
-
-            // Intersection
-            EditorGUILayout.LabelField("Intersection Defaults", EditorStyles.boldLabel);
-            config.defaultIntersectionSize =
-                EditorGUILayout.Vector2Field("Intersection Size (X,Z)", config.defaultIntersectionSize);
-
-            EditorGUILayout.Space(4);
-
-            // Road
-            EditorGUILayout.LabelField("Road Defaults", EditorStyles.boldLabel);
-            config.defaultRoad.width  = EditorGUILayout.FloatField("Road Width",  config.defaultRoad.width);
-            config.defaultRoad.length = EditorGUILayout.FloatField("Road Length", config.defaultRoad.length);
-            config.defaultRoad.footpathDepth =
-                EditorGUILayout.FloatField("Footpath Depth", config.defaultRoad.footpathDepth);
-
-            EditorGUILayout.Space(4);
-
-            // Shared curb / gutter
-            EditorGUILayout.LabelField("Curb / Gutter", EditorStyles.boldLabel);
-            config.curb.skirtOut    = EditorGUILayout.FloatField("Skirt Out",    config.curb.skirtOut);
-            config.curb.skirtDown   = EditorGUILayout.FloatField("Skirt Down",   config.curb.skirtDown);
-            config.curb.gutterDepth = EditorGUILayout.FloatField("Gutter Depth", config.curb.gutterDepth);
-            config.curb.gutterWidth = EditorGUILayout.FloatField("Gutter Width", config.curb.gutterWidth);
-
-            if (GUI.changed)
-                EditorUtility.SetDirty(config);
-        }
-        else
-        {
-            EditorGUILayout.HelpBox("Assign or create a RoadSystemConfig asset to edit settings.", MessageType.Info);
+            EditorGUILayout.HelpBox(
+                "Assign or create a RoadSystemConfig asset.\n\n" +
+                "- Global defaults (road height, curb, base sizes, materials) are edited on the asset.\n" +
+                "- This window only controls creation-time overrides for new pieces.",
+                MessageType.Info
+            );
+            return;
         }
 
-    EditorGUILayout.Space(12);
+        // ---------- CREATION OVERRIDES ----------
+        EditorGUILayout.LabelField("Creation Overrides", EditorStyles.boldLabel);
+        EditorGUILayout.HelpBox(
+            "These values are what new pieces will actually use.\n" +
+            "They are initially seeded from the config, but after that this window is the source of truth.",
+            MessageType.None
+        );
 
-    using (new EditorGUI.DisabledScope(!config))
-    {
-        if (GUILayout.Button("Create Road System Root", GUILayout.Height(32)))
-            CreateRootAndFirst();
+        EditorGUILayout.Space(4);
+
+        // Intersection
+        EditorGUILayout.LabelField("Intersection", EditorStyles.boldLabel);
+        intersectionSizeOverride = EditorGUILayout.Vector2Field(
+            "Size (X,Z)", intersectionSizeOverride
+        );
+
+        EditorGUILayout.Space(4);
+
+        // Road
+        EditorGUILayout.LabelField("Road", EditorStyles.boldLabel);
+        roadWidthOverride = EditorGUILayout.FloatField("Width", roadWidthOverride);
+        roadLengthOverride = EditorGUILayout.FloatField("Length", roadLengthOverride);
+        roadFootpathDepthOverride = EditorGUILayout.FloatField(
+            "Footpath Depth",
+            roadFootpathDepthOverride
+        );
+
+        EditorGUILayout.Space(12);
+
+        // ---------- CREATE ROOT ----------
+        using (new EditorGUI.DisabledScope(!config))
+        {
+            if (GUILayout.Button("Create Road System Root", GUILayout.Height(32)))
+                CreateRootAndFirst();
+        }
+
+        EditorGUILayout.Space(8);
+
+        // ---------- PIECE TYPE SELECTION ----------
+        EditorGUILayout.LabelField("Piece Type for New Pieces", EditorStyles.boldLabel);
+
+        using (new EditorGUILayout.HorizontalScope())
+        {
+            int selected = pieceType == RoadPieceType.Road ? 0 : 1;
+
+            EditorGUI.BeginChangeCheck();
+            selected = GUILayout.Toolbar(selected, new[] { "Road", "Intersection" });
+            if (EditorGUI.EndChangeCheck())
+            {
+                pieceType = (RoadPieceType)selected;
+                CurrentPieceType = pieceType;
+            }
+        }
     }
 
-    EditorGUILayout.LabelField("Piece Type", EditorStyles.boldLabel);
+    // -------- SEEDING FROM CONFIG --------
 
-    using (new EditorGUILayout.HorizontalScope())
+    static void SeedOverridesFromConfig(RoadSystemConfig cfg)
     {
-        int selected = pieceType == RoadPieceType.Road ? 0 : 1;
+        if (!cfg) return;
 
-        EditorGUI.BeginChangeCheck();
-        selected = GUILayout.Toolbar(selected, new[] { "Road", "Intersection" });
-        if (EditorGUI.EndChangeCheck())
-        {
-            pieceType = (RoadPieceType)selected;
-            CurrentPieceType = pieceType;   // <<< keep static in sync
-        }
+        // Only seed when overrides are effectively unset, so user edits are preserved
+        if (intersectionSizeOverride == Vector2.zero)
+            intersectionSizeOverride = cfg.defaultIntersectionSize;
+
+        if (roadWidthOverride <= 0f)
+            roadWidthOverride = cfg.defaultRoad.width;
+
+        if (roadLengthOverride <= 0f)
+            roadLengthOverride = cfg.defaultRoad.length;
+
+        if (roadFootpathDepthOverride <= 0f)
+            roadFootpathDepthOverride = cfg.defaultRoad.footpathDepth;
     }
-}
+
+    // -------- STATIC HELPERS USED BY HANDLE SCRIPTS --------
+    // These no longer look at config for dimensional values; they just reflect the window.
+
+    public static Vector2 GetIntersectionSize()
+        => intersectionSizeOverride;
+
+    public static float GetRoadWidth()
+        => roadWidthOverride;
+
+    public static float GetRoadLength()
+        => roadLengthOverride;
+
+    public static float GetRoadFootpathDepth()
+        => roadFootpathDepthOverride;
+
+    // -------- CONFIG ASSET CREATION + ROOT CREATION --------
 
     RoadSystemConfig CreateConfigAsset()
     {
         var path = EditorUtility.SaveFilePanelInProject(
-            "Create RoadSystemConfig", "RoadSystemConfig", "asset",
-            "Choose a folder and name for the RoadSystemConfig asset.");
-        if (string.IsNullOrEmpty(path)) return config;
+            "Create RoadSystemConfig",
+            "RoadSystemConfig",
+            "asset",
+            "Choose a folder and name for the RoadSystemConfig asset."
+        );
+        if (string.IsNullOrEmpty(path)) return null;
 
         var asset = ScriptableObject.CreateInstance<RoadSystemConfig>();
         AssetDatabase.CreateAsset(asset, path);
@@ -112,6 +197,20 @@ public class RoadSystemAuthoringWindow : EditorWindow
 
     void CreateRootAndFirst()
     {
+        if (!config)
+        {
+            Debug.LogError("RoadSystemAuthoringWindow: Cannot create root without a config.");
+            return;
+        }
+
+        // Ensure overrides are seeded at least once
+        if (!overridesSeededFromConfig || lastSeedConfig != config)
+        {
+            SeedOverridesFromConfig(config);
+            lastSeedConfig = config;
+            overridesSeededFromConfig = true;
+        }
+
         Undo.IncrementCurrentGroup();
         var group = Undo.GetCurrentGroup();
 
@@ -120,11 +219,11 @@ public class RoadSystemAuthoringWindow : EditorWindow
         Undo.RegisterCreatedObjectUndo(rootGO, "Create RoadSystem Root");
         var rsm = rootGO.AddComponent<RoadSystemManager>();
 
-        // Assign config to manager (so OnValidate can auto-apply)
+        // Assign config to manager
         rsm.config = config;
 
-        // First piece (Road or Intersection depending on pieceType)
-        string firstName = pieceType.ToString();            // "Road" or "Intersection"
+        // First piece
+        string firstName = pieceType.ToString();
         var first = new GameObject(firstName);
         Undo.RegisterCreatedObjectUndo(first, $"Create First {pieceType}");
         first.transform.SetParent(rootGO.transform, false);
@@ -135,9 +234,12 @@ public class RoadSystemAuthoringWindow : EditorWindow
             {
                 var road = first.AddComponent<ProceduralRoad>();
 
-                road.width         = config.defaultRoad.width;
-                road.length        = config.defaultRoad.length;
-                road.footpathDepth = config.defaultRoad.footpathDepth;
+                // Use authoring overrides as the single source of truth
+                road.width         = Mathf.Max(0.01f, roadWidthOverride);
+                road.length        = Mathf.Max(0.01f, roadLengthOverride);
+                road.footpathDepth = Mathf.Max(0f,    roadFootpathDepthOverride);
+
+                // Shared values from config (no overrides)
                 road.RoadHeight    = config.roadHeight;
                 road.material      = config.defaultMaterial;
                 road.curb          = config.curb;
@@ -150,27 +252,26 @@ public class RoadSystemAuthoringWindow : EditorWindow
             {
                 var pi = first.AddComponent<ProceduralIntersection>();
 
-                pi.Size       = config.defaultIntersectionSize;
+                var size = intersectionSizeOverride;
+                if (size == Vector2.zero && config.defaultIntersectionSize != Vector2.zero)
+                    size = config.defaultIntersectionSize;
+
+                pi.Size       = size;
                 pi.RoadHeight = config.roadHeight;
                 pi.material   = config.defaultMaterial;
 
-                if (rsm.config)
-                    pi.ApplySharedDefaults(rsm.config);
-
+                pi.ApplySharedDefaults(config);
                 pi.Rebuild();
                 break;
             }
         }
 
-        // Dirty + undo
         Undo.CollapseUndoOperations(group);
         EditorUtility.SetDirty(rootGO);
         EditorUtility.SetDirty(first);
         if (!Application.isPlaying)
             EditorSceneManager.MarkSceneDirty(rootGO.scene);
 
-        // Keep selection on the new root for quick iteration
         Selection.activeGameObject = rootGO;
     }
-
 }

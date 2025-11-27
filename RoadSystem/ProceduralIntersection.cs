@@ -154,6 +154,24 @@ public class ProceduralIntersection : MonoBehaviour
         }
     }
 
+    public Vector3 GetSideWorldMid(Side side)
+    {
+        var size = Size;
+        float hx = size.x * 0.5f;
+        float hz = size.y * 0.5f;
+
+        Vector3 local = side switch
+        {
+            Side.South => new Vector3(0f,  0f, -hz),
+            Side.East  => new Vector3(hx,  0f,  0f),
+            Side.North => new Vector3(0f,  0f,  hz),
+            Side.West  => new Vector3(-hx, 0f,  0f),
+            _          => Vector3.zero
+        };
+
+        return transform.TransformPoint(local);
+    }
+
     private void ApplyCollider()
     {
         if (!_builtPB) return;
