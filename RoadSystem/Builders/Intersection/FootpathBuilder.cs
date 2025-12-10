@@ -18,8 +18,6 @@ public static class FootpathModule
             return Mathf.Clamp(t, 0f, fpm.edgeLength);
         }
 
-        var size = model.Size;
-
         float tL = fp.leftCorner.exists  || fp.leftAdjExists  ? ParamAlongEdge(fp, fp.leftCorner.apex)  : 0f;
         float tR = fp.rightCorner.exists || fp.rightAdjExists ? ParamAlongEdge(fp, fp.rightCorner.apex) : fp.edgeLength;
 
@@ -43,15 +41,15 @@ public static class FootpathModule
             new Vector3(xL, y, z1), // v3
         };
 
-        // ---- 1) Curb skirt: extrude inner edge out (+Z) and down -------------
-        //var curbSkirt = new Quad(pathBase.ExtrudeEdgeOutDown(2, Vector3.forward, curb.skirtOut, curb.skirtDown));
-        var curbSkirt = ExtrusionUtil.ExtrudeEdgeOutDown(pathBase[2], pathBase[3], Vector3.forward, curb.skirtOut, curb.skirtDown);
+        // ---- Curb skirt: extrude inner edge out (+Z) and down ----------------
+        var curbSkirt = ExtrusionUtil.ExtrudeEdgeOutDown(
+            pathBase[2], pathBase[3], Vector3.forward, curb.skirtOut, curb.skirtDown);
 
-        // ---- 2) Gutter apron: continue down from skirt’s inner edge ----------
+        // ---- Gutter apron: continue down from skirt’s inner edge -------------
         var gutterApron = ExtrusionUtil.ExtrudeEdgeOutDown(
             curbSkirt[1], curbSkirt[2], Vector3.forward, 0f, curb.gutterDepth);
 
-        // ---- 3) Gutter skirt to road Y: push by gutterWidth, snap to world Y -
+        // ---- Gutter skirt to road Y: push by gutterWidth, snap to world Y ----
         var gutterSkirtToRoad = ExtrusionUtil.ExtrudeEdgeOutToWorldY(
             gutterApron[1], gutterApron[2], Vector3.forward, curb.gutterWidth, model.RoadHeight);
 
@@ -72,26 +70,45 @@ public static class FootpathModule
             path[2].x = Mathf.Min(fp.edgeLength, path[2].x + join);
         }
 
-        // ---- Collect and place (List<Vector3[]>, Quaternion) -----------------
-        var faces = new List<Vector3[]>(capacity: 4)
-        {
-            path,
-            curbSkirt,
-            gutterApron,
-            gutterSkirtToRoad
-        };
-
-        var (rot, tx) = PlacementFor(side, model.Size);
+        // --- Placement / recentering -----------------------------------------
+        var size = model.Size;
+        var (rot, tx) = PlacementFor(side, size);
         var localRotation = rot;
-        var rotated       = VertexOperations.RotateMany(faces, localRotation, Vector3.zero);
-        var placedLocal   = VertexOperations.TranslateMany(rotated, tx);
+        var centerOffset  = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
 
-        var centerOffset   = new Vector3(-size.x * 0.5f, 0f, -size.y * 0.5f);
-        var centeredLocal  = VertexOperations.TranslateMany(placedLocal, centerOffset);
+        List<Vector3[]> Place(List<Vector3[]> src)
+        {
+            var rotated      = VertexOperations.RotateMany(src, localRotation, Vector3.zero);
+            var placedLocal  = VertexOperations.TranslateMany(rotated, tx);
+            return VertexOperations.TranslateMany(placedLocal, centerOffset);
+        }
 
-        builder.AddFaces(centeredLocal);
+        // --- Footpath surface -------------------------------------------------
+        {
+            var footpathFaces = new List<Vector3[]> { path };
+            builder.AddFaces(Place(footpathFaces), RoadSurfaceMasks.Footpath);
+        }
+
+        // --- Curb face --------------------------------------------------------
+        {
+            var curbFaces = new List<Vector3[]> { curbSkirt };
+            builder.AddFaces(Place(curbFaces), RoadSurfaceMasks.CurbFace);
+        }
+
+        // --- Gutter drop ------------------------------------------------------
+        {
+            var gutterDropFaces = new List<Vector3[]> { gutterApron };
+            builder.AddFaces(Place(gutterDropFaces), RoadSurfaceMasks.GutterDrop);
+        }
+
+        // --- Gutter run (to road) --------------------------------------------
+        {
+            var gutterRunFaces = new List<Vector3[]> { gutterSkirtToRoad };
+            builder.AddFaces(Place(gutterRunFaces), RoadSurfaceMasks.GutterRun);
+        }
     }
 
+    // -- Static Helpers --
     // Match CornerModule’s convention (negative yaw). Return Quaternion + tx.
     private static (Quaternion rot, Vector3 tx) PlacementFor(Side side, Vector2 size) => side switch
     {

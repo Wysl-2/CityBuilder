@@ -72,6 +72,15 @@ public class FaceOverlay : Editor
     {
         if (pb == null || sinkTag == null || faceKeyToRecord == null || unityMesh == null) return;
 
+        if (!FaceOverlaySettings.Enabled)
+        {
+            // optionally still draw the panel so you can see it’s disabled
+            DrawModePanel();
+            return;
+        }
+
+
+
         int id = GUIUtility.GetControlID(FocusType.Passive);
         var e  = Event.current;
 
@@ -266,5 +275,30 @@ public class FaceOverlay : Editor
         Vector3 refAxis = Mathf.Abs(n.y) < 0.999f ? Vector3.up : Vector3.right;
         U = Vector3.Normalize(Vector3.Cross(refAxis, n));
         V = Vector3.Cross(n, U);
+    }
+}
+
+
+
+public static class FaceOverlaySettings
+{
+    const string MenuPath = "Tools/Face Overlay/Enable Picking";
+    static bool _enabled = true;
+
+    public static bool Enabled => _enabled;
+
+    [MenuItem(MenuPath)]
+    static void Toggle()
+    {
+        _enabled = !_enabled;
+        Menu.SetChecked(MenuPath, _enabled);
+        SceneView.RepaintAll();
+    }
+
+    [MenuItem(MenuPath, true)]
+    static bool ToggleValidate()
+    {
+        Menu.SetChecked(MenuPath, _enabled);
+        return true;
     }
 }

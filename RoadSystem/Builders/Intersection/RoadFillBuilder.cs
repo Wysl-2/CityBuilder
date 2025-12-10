@@ -47,6 +47,6 @@ public static class RoadFillModule
         var centerOffset = new Vector3(-m.Size.x * 0.5f, 0f, -m.Size.y * 0.5f);
         var centered = VertexOperations.TranslateMany(faces, centerOffset);
 
-        builder.AddFaces(centered);
+        builder.AddFaces(centered, RoadSurfaceMasks.Road);
     }
 }

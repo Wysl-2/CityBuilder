@@ -52,7 +52,7 @@ public class ProceduralRoad : MonoBehaviour
             Axis
         );
 
-       // 2) Carriageway in the remaining centre area
+        // 2) Carriageway in the remaining centre area
         var carriageFaces = new List<Vector3[]>();
 
         // Total inset from each outer edge before the road surface starts
@@ -85,7 +85,9 @@ public class ProceduralRoad : MonoBehaviour
                 carriageFaces.Add(QuadXZ(x0, x1, innerBackZ, innerFrontZ, RoadHeight));
         }
 
-        builder.AddFaces(carriageFaces);
+        // Tag carriageway faces as Road
+        if (carriageFaces.Count > 0)
+            builder.AddFaces(carriageFaces, RoadSurfaceMasks.Road);
 
         var mats = material ? new[] { material } : null;
         _builtPB = builder.Build(mats, transform);
@@ -94,10 +96,9 @@ public class ProceduralRoad : MonoBehaviour
 
     #if UNITY_EDITOR
         EditorUtility.SetDirty(this);
-        if (!Application.isPlaying)
-            UnityEditor.SceneManagement.EditorSceneManager.MarkSceneDirty(gameObject.scene);
     #endif
     }
+
 
     public void OnDrawGizmos()
     {

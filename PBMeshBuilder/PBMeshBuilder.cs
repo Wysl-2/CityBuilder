@@ -42,11 +42,15 @@ public class PBMeshBuilder
     private readonly Dictionary<PositionGroupKey, List<NormalBin>> bins;
     private readonly List<Vector3> positions = new();
     private readonly List<Face> faces = new();
+    private readonly List<Color> colors = new();
+
     // Track which uvGroups use each vertex to apply disconnectedVertices at boundaries
     private readonly Dictionary<int, HashSet<int>> vertexToUvGroups = new();
 
+    // Exposed properties (readonly lists)
     public IReadOnlyList<Vector3> Positions => positions;
     public IReadOnlyList<Face> Faces => faces;
+    public IReadOnlyList<Color> Colors => colors;
 
     // Authoring tag
     public IFaceSink? Sink { get; set; }
@@ -70,6 +74,7 @@ public class PBMeshBuilder
         positions.Clear();
         faces.Clear();
         vertexToUvGroups.Clear();
+        colors.Clear();
     }
 
     /// <summary>
@@ -77,9 +82,11 @@ public class PBMeshBuilder
     /// </summary>
     /// <param name="disconnectedVertices">Vertex indices (0-2) to isolate for UV seams at uvGroup boundaries.</param>
     /// <param name="uvGroup">UV island group; vertices are shared within the same uvGroup if normals match.</param>
-    public Face AddTriangleFace(Vector3 a, Vector3 b, Vector3 c,
-                    Winding winding = Winding.CW, int smoothingGroup = 0, int submeshIndex = 0,
-                    int[] disconnectedVertices = null, int uvGroup = 0)
+    public Face AddTriangleFace(
+    Vector3 a, Vector3 b, Vector3 c,
+    Winding winding = Winding.CW, int smoothingGroup = 0, int submeshIndex = 0,
+    int[] disconnectedVertices = null, int uvGroup = 0,
+    Color? vertexColor = null)
     {
         if (smoothingGroup < 0) Debug.LogWarning($"Negative smoothingGroup {smoothingGroup} may be invalid.");
         if (submeshIndex < 0) Debug.LogWarning($"Negative submeshIndex {submeshIndex} may be invalid.");
@@ -103,9 +110,11 @@ public class PBMeshBuilder
             }
         }
 
-        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup);
-        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup);
-        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup);
+        var col = vertexColor ?? Color.white;
+
+        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup, col);
+        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup, col);
+        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup, col);
 
         int[] tri = (winding == Winding.CCW)
             ? new[] { i0, i1, i2 }
@@ -123,31 +132,32 @@ public class PBMeshBuilder
         return f;
     }
     // -- Method Overloads
-    /// <param name="vertices">Array of 4 vertices in order: bottom-left, bottom-right, top-right, top-left (e.g., (0,0,0), (1,0,0), (1,0,1), (0,0,1) for XZ quad).</param>
-    public Face AddTriangleFace(Vector3[] vertices, Winding winding = Winding.CW,
-                int smoothingGroup = 0, int submeshIndex = 0, int[] disconnectedVertices = null, int uvGroup = 0)
+    public Face AddTriangleFace(
+    Vector3[] vertices,
+    Winding winding = Winding.CW,
+    int smoothingGroup = 0, int submeshIndex = 0,
+    int[] disconnectedVertices = null, int uvGroup = 0,
+    Color? vertexColor = null)
     {
-        if (vertices == null || vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(vertices));
-        // Forward vertices to original method
+        if (vertices == null || vertices.Length != 3)
+            throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(vertices));
+
         return AddTriangleFace(vertices[0], vertices[1], vertices[2], winding,
-                                smoothingGroup, submeshIndex, disconnectedVertices, uvGroup);
+                            smoothingGroup, submeshIndex, disconnectedVertices, uvGroup, vertexColor);
     }
-    //    public Face AddTriangleFace(Triangle tri)
-    // {
-    //     if (tri.Vertices == null || tri.Vertices.Length != 3) throw new ArgumentException("Triangle requires exactly 3 vertices.", nameof(tri.Vertices));
-    //     // Forward to original method
-    //     return AddTriangleFace(tri.Vertices[0], tri.Vertices[1], tri.Vertices[2], tri.Winding,
-    //                         tri.SmoothingGroup, tri.SubmeshIndex, tri.DisconnectedVertices, tri.UVGroup);
-    // }
+
 
     /// <summary>
     /// Adds a quad face, triangulated along 0-2 or 1-3, with optional UV seam control.
     /// </summary>
     /// <param name="disconnectedVertices">Vertex indices (0-3) to isolate for UV seams at uvGroup boundaries.</param>
     /// <param name="uvGroup">UV island group; vertices are shared within the same uvGroup if normals match.</param>
-    public Face AddQuadFace(Vector3 a, Vector3 b, Vector3 c, Vector3 d,
-                    Winding winding = Winding.CW, bool diag02 = true, int smoothingGroup = 0, int submeshIndex = 0,
-                    int[] disconnectedVertices = null, int uvGroup = 0)
+    public Face AddQuadFace(
+    Vector3 a, Vector3 b, Vector3 c, Vector3 d,
+    Winding winding = Winding.CW, bool diag02 = true,
+    int smoothingGroup = 0, int submeshIndex = 0,
+    int[] disconnectedVertices = null, int uvGroup = 0,
+    Color? vertexColor = null)
     {
         if (smoothingGroup < 0) Debug.LogWarning($"Negative smoothingGroup {smoothingGroup} may be invalid.");
         if (submeshIndex < 0) Debug.LogWarning($"Negative submeshIndex {submeshIndex} may be invalid.");
@@ -169,10 +179,12 @@ public class PBMeshBuilder
             }
         }
 
-        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup);
-        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup);
-        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup);
-        int i3 = AddVertex(d, faceN, isDisconnected[3], uvGroup);
+        var col = vertexColor ?? Color.white;
+
+        int i0 = AddVertex(a, faceN, isDisconnected[0], uvGroup, col);
+        int i1 = AddVertex(b, faceN, isDisconnected[1], uvGroup, col);
+        int i2 = AddVertex(c, faceN, isDisconnected[2], uvGroup, col);
+        int i3 = AddVertex(d, faceN, isDisconnected[3], uvGroup, col);
 
         int[] t0, t1;
         if (diag02)
@@ -197,29 +209,32 @@ public class PBMeshBuilder
 
         return f;
     }
+
     // -- Method Overloads
-    public Face AddQuadFace(Vector3[] vertices, Winding winding = Winding.CW, bool diag02 = true,
-                    int smoothingGroup = 0, int submeshIndex = 0, int[] disconnectedVertices = null, int uvGroup = 0)
+    public Face AddQuadFace(
+    Vector3[] vertices,
+    Winding winding = Winding.CW, bool diag02 = true,
+    int smoothingGroup = 0, int submeshIndex = 0,
+    int[] disconnectedVertices = null, int uvGroup = 0,
+    Color? vertexColor = null)
     {
-        if (vertices == null || vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(vertices));
-        // Forward to original method
-        return AddQuadFace(vertices[0], vertices[1], vertices[2], vertices[3], winding, diag02,
-                    smoothingGroup, submeshIndex, disconnectedVertices, uvGroup);
+        if (vertices == null || vertices.Length != 4)
+            throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(vertices));
+
+        return AddQuadFace(vertices[0], vertices[1], vertices[2], vertices[3],
+                        winding, diag02, smoothingGroup, submeshIndex, disconnectedVertices, uvGroup, vertexColor);
     }
-    // public Face AddQuadFace(Quad quad)
-    // {
-    //     if (quad.Vertices == null || quad.Vertices.Length != 4) throw new ArgumentException("Quad requires exactly 4 vertices.", nameof(quad.Vertices));
-    //     // Forward to original method
-    //     return AddQuadFace(quad.Vertices[0], quad.Vertices[1], quad.Vertices[2], quad.Vertices[3], quad.Winding, quad.Diag02,
-    //                         quad.SmoothingGroup, quad.SubmeshIndex, quad.DisconnectedVertices, quad.UVGroup);
-    // }
+
 
     /// <summary>
     /// Method to add a collection of faces to the builder. Determine if face is Quad or Tri based on array length.
     /// </summary>
-    public void AddFaces(List<Vector3[]> faces)
+    public void AddFaces(List<Vector3[]> faces, Color? vertexColor = null, int uvGroup = 0)
     {
         if (faces == null) return;
+
+        var col = vertexColor ?? Color.white;
+
         for (int i = 0; i < faces.Count; i++)
         {
             var f = faces[i];
@@ -227,8 +242,14 @@ public class PBMeshBuilder
 
             switch (f.Length)
             {
-                case 3: AddTriangleFace(f); break;
-                case 4: AddQuadFace(f); break;
+                case 3:
+                    AddTriangleFace(f, Winding.CW, 0, 0, null, uvGroup, col);
+                    break;
+
+                case 4:
+                    AddQuadFace(f, Winding.CW, true, 0, 0, null, uvGroup, col);
+                    break;
+
                 default:
                     Debug.LogWarning($"Face {i} has {f.Length} verts; only 3 or 4 supported.");
                     break;
@@ -237,18 +258,13 @@ public class PBMeshBuilder
     }
 
 
-
-    private static Vector3 ComputeFaceNormal(in Vector3 a, in Vector3 b, in Vector3 c)
-    {
-        var n = Vector3.Cross(b - a, c - a);
-        var mag = n.magnitude;
-        return (mag > 1e-20f) ? (n / mag) : Vector3.zero;
-    }
-
-    private int AddVertex(Vector3 p, Vector3 faceNormal, bool forceNew, int uvGroup)
+    /// <summary>
+    /// Method to add a vertex of a face to the vertex list
+    /// </summary>
+    private int AddVertex(Vector3 p, Vector3 faceNormal, bool forceNew, int uvGroup, Color vertexColor)
     {
         var n = (faceNormal.sqrMagnitude > 0f) ? faceNormal.normalized : Vector3.up;
-        var key = new PositionGroupKey { Position = p, Group = uvGroup }; // Always use uvGroup
+        var key = new PositionGroupKey { Position = p, Group = uvGroup };
 
         if (!bins.TryGetValue(key, out var list))
         {
@@ -259,14 +275,20 @@ public class PBMeshBuilder
         for (int i = 0; i < list.Count; i++)
         {
             var b = list[i];
+
+            // normal compatibility
             if (Mathf.Abs(Vector3.Dot(b.n, n)) >= normalTolCos)
             {
-                // Check if this vertex is shared across different uvGroups and needs disconnection
+                // if vertex color differs, don't reuse this vertex
+                if (colors[b.index] != vertexColor)
+                    continue;
+
+                // existing uvGroup seam logic
                 if (forceNew && vertexToUvGroups.TryGetValue(b.index, out var groups) && groups.Contains(uvGroup))
                 {
-                    // Vertex is used by this uvGroup; share unless explicitly disconnected across groups
-                    if (groups.Count > 1) continue; // Used by other uvGroups, force new vertex
-                    return b.index; // Safe to share within this uvGroup
+                    if (groups.Count > 1)
+                        continue;           // used by other uvGroups, force new
+                    return b.index;          // safe to share within this uvGroup
                 }
                 return b.index;
             }
@@ -274,9 +296,10 @@ public class PBMeshBuilder
 
         int idx = positions.Count;
         positions.Add(p);
+        colors.Add(vertexColor);   // NEW
+
         list.Add(new NormalBin { n = n, index = idx });
 
-        // Track uvGroup usage for this vertex
         if (!vertexToUvGroups.ContainsKey(idx))
             vertexToUvGroups[idx] = new HashSet<int>();
         vertexToUvGroups[idx].Add(uvGroup);
@@ -284,132 +307,98 @@ public class PBMeshBuilder
         return idx;
     }
 
-        /// <summary>
+
+    /// <summary>
     /// Builds and returns a ProBuilderMesh with the collected vertices and faces.
     /// </summary>
     /// 
     public ProBuilderMesh Build(Material[] materials = null, Transform host = null, bool refresh = true)
-{
-    ProBuilderMesh pb;
-
-    if (host != null)
     {
-        // Build / reuse the ProBuilderMesh component directly on the host GameObject
-        pb = host.GetComponent<ProBuilderMesh>();
-        if (pb == null)
-            pb = host.gameObject.AddComponent<ProBuilderMesh>();
+        ProBuilderMesh pb;
 
-        // Clear any existing geometry
-        pb.Clear();
-
-        // Assign positions and faces from the builder
-        pb.positions = new System.Collections.Generic.List<Vector3>(positions);
-        pb.faces     = new System.Collections.Generic.List<Face>(faces);
-    }
-    else
-    {
-        // Fallback: keep old behaviour when no host is supplied
-        pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
-    }
-
-    // Set sharedVertices so every vertex is its own shared index (your existing logic)
-    var groups = new SharedVertex[positions.Count];
-    for (int i = 0; i < positions.Count; i++)
-        groups[i] = new SharedVertex(new[] { i });
-    pb.sharedVertices = groups;
-
-    // Materials / submeshes (unchanged)
-    if (materials != null && materials.Length > 0)
-    {
-        var facesBySubmesh = new Dictionary<int, List<Face>>();
-        foreach (var face in faces)
+        if (host != null)
         {
-            int submeshIndex = face.submeshIndex;
-            if (submeshIndex >= materials.Length)
-                Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
-            if (!facesBySubmesh.ContainsKey(submeshIndex))
-                facesBySubmesh[submeshIndex] = new List<Face>();
-            facesBySubmesh[submeshIndex].Add(face);
-        }
+            // Build / reuse the ProBuilderMesh component directly on the host GameObject
+            pb = host.GetComponent<ProBuilderMesh>();
+            if (pb == null)
+                pb = host.gameObject.AddComponent<ProBuilderMesh>();
 
-        foreach (var kvp in facesBySubmesh)
-        {
-            int submeshIndex = kvp.Key;
-            var submeshFaces = kvp.Value;
-            Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
-            if (material != null)
-                pb.SetMaterial(submeshFaces, material);
+            // Clear any existing geometry
+            pb.Clear();
+
+            // Assign positions and faces from the builder
+            pb.positions = new System.Collections.Generic.List<Vector3>(positions);
+            pb.faces     = new System.Collections.Generic.List<Face>(faces);
+
+            if (colors.Count == positions.Count)
+                pb.colors = new List<Color>(colors);
             else
-                Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
+                Debug.LogWarning($"PBMeshBuilder: colors.Count ({colors.Count}) != positions.Count ({positions.Count}).");
+        }
+        else
+        {
+            // Fallback: keep old behaviour when no host is supplied
+            pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
+
+            if (colors.Count == positions.Count)
+                pb.colors = new List<Color>(colors);
+            else
+                Debug.LogWarning($"PBMeshBuilder: colors.Count ({colors.Count}) != positions.Count ({positions.Count}).");
         }
 
-        var renderer = pb.GetComponent<MeshRenderer>();
-        renderer.sharedMaterials = materials;
+        // Set sharedVertices so every vertex is its own shared index
+        var groups = new SharedVertex[positions.Count];
+        for (int i = 0; i < positions.Count; i++)
+            groups[i] = new SharedVertex(new[] { i });
+        pb.sharedVertices = groups;
+
+        // Materials / submeshes
+        if (materials != null && materials.Length > 0)
+        {
+            var facesBySubmesh = new Dictionary<int, List<Face>>();
+            foreach (var face in faces)
+            {
+                int submeshIndex = face.submeshIndex;
+                if (submeshIndex >= materials.Length)
+                    Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
+                if (!facesBySubmesh.ContainsKey(submeshIndex))
+                    facesBySubmesh[submeshIndex] = new List<Face>();
+                facesBySubmesh[submeshIndex].Add(face);
+            }
+
+            foreach (var kvp in facesBySubmesh)
+            {
+                int submeshIndex = kvp.Key;
+                var submeshFaces = kvp.Value;
+                Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
+                if (material != null)
+                    pb.SetMaterial(submeshFaces, material);
+                else
+                    Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
+            }
+
+            var renderer = pb.GetComponent<MeshRenderer>();
+            renderer.sharedMaterials = materials;
+        }
+
+        if (refresh)
+        {
+            pb.ToMesh();
+            pb.Refresh(RefreshMask.All);
+        }
+
+        bins.Clear();
+        vertexToUvGroups.Clear();
+        return pb;
     }
 
-    if (refresh)
+    // -- Static Helpers
+    private static Vector3 ComputeFaceNormal(in Vector3 a, in Vector3 b, in Vector3 c)
     {
-        pb.ToMesh();
-        pb.Refresh(RefreshMask.All);
+        var n = Vector3.Cross(b - a, c - a);
+        var mag = n.magnitude;
+        return (mag > 1e-20f) ? (n / mag) : Vector3.zero;
     }
 
-    bins.Clear();
-    vertexToUvGroups.Clear();
-    return pb;
-}
-
-    // public ProBuilderMesh Build(Material[] materials = null, Transform parent = null, bool refresh = true)
-    // {
-    //     var pb = ProBuilderMesh.Create(positions.ToArray(), faces.ToArray());
-
-    //     if(parent != null)
-    //     {
-    //         var t = pb.transform;
-    //         t.SetParent(parent);
-    //     }
-
-    //     var groups = new SharedVertex[positions.Count];
-    //     for (int i = 0; i < positions.Count; i++)
-    //         groups[i] = new SharedVertex(new[] { i });
-    //     pb.sharedVertices = groups;
-
-    //     if (materials != null && materials.Length > 0)
-    //     {
-    //         var facesBySubmesh = new Dictionary<int, List<Face>>();
-    //         foreach (var face in faces)
-    //         {
-    //             int submeshIndex = face.submeshIndex;
-    //             if (submeshIndex >= materials.Length)
-    //                 Debug.LogError($"submeshIndex {submeshIndex} exceeds materials array length ({materials.Length}).");
-    //             if (!facesBySubmesh.ContainsKey(submeshIndex))
-    //                 facesBySubmesh[submeshIndex] = new List<Face>();
-    //             facesBySubmesh[submeshIndex].Add(face);
-    //         }
-
-    //         foreach (var kvp in facesBySubmesh)
-    //         {
-    //             int submeshIndex = kvp.Key;
-    //             var submeshFaces = kvp.Value;
-    //             Material material = submeshIndex < materials.Length ? materials[submeshIndex] : null;
-    //             if (material != null)
-    //                 pb.SetMaterial(submeshFaces, material);
-    //             else
-    //                 Debug.LogWarning($"No material provided for submeshIndex {submeshIndex}. Faces will use default material.");
-    //         }
-
-    //         var renderer = pb.GetComponent<MeshRenderer>();
-    //         renderer.sharedMaterials = materials;
-    //     }
-
-    //     if (refresh)
-    //     {
-    //         pb.ToMesh();
-    //         pb.Refresh(RefreshMask.All);
-    //     }
-
-    //     bins.Clear();
-    //     vertexToUvGroups.Clear();
-    //     return pb;
-    // }
 }
 

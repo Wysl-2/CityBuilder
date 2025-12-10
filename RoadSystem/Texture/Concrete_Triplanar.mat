@@ -1,0 +1,139 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!21 &2100000
+Material:
+  serializedVersion: 8
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_Name: Concrete_Triplanar
+  m_Shader: {fileID: 4800000, guid: bd6081007ab414540ae54fb1f026446d, type: 3}
+  m_Parent: {fileID: 0}
+  m_ModifiedSerializedProperties: 0
+  m_ValidKeywords: []
+  m_InvalidKeywords: []
+  m_LightmapFlags: 4
+  m_EnableInstancingVariants: 0
+  m_DoubleSidedGI: 0
+  m_CustomRenderQueue: -1
+  stringTagMap: {}
+  disabledShaderPasses: []
+  m_LockedProperties: 
+  m_SavedProperties:
+    serializedVersion: 3
+    m_TexEnvs:
+    - _AOMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _BumpMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailAlbedoMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailMask:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _DetailNormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _EmissionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _HeightMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTex:
+        m_Texture: {fileID: 2800000, guid: 9037cdada581caa40aa476a3f383a1f7, type: 3}
+        m_Scale: {x: 0.5, y: 0.5}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexCurb:
+        m_Texture: {fileID: 2800000, guid: 5bfcb1f4869fdb548a27cbc3c524a4f0, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexCurbFace:
+        m_Texture: {fileID: 2800000, guid: 42a6db55a6625c34cb693bc86217a337, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexFootpath:
+        m_Texture: {fileID: 2800000, guid: 9cae0e354734c1142b714551af15b094, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexGutterDrop:
+        m_Texture: {fileID: 2800000, guid: 435d96a38f61e5841961589a73654c98, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexGutterRun:
+        m_Texture: {fileID: 2800000, guid: 9037cdada581caa40aa476a3f383a1f7, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MainTexRoad:
+        m_Texture: {fileID: 2800000, guid: 9037cdada581caa40aa476a3f383a1f7, type: 3}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _MetallicGlossMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _NormalMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _OcclusionMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    - _ParallaxMap:
+        m_Texture: {fileID: 0}
+        m_Scale: {x: 1, y: 1}
+        m_Offset: {x: 0, y: 0}
+    m_Ints: []
+    m_Floats:
+    - _BumpScale: 1
+    - _CurbFaceBrightness: 1.02
+    - _Cutoff: 0.5
+    - _DetailNormalMapScale: 1
+    - _DstBlend: 0
+    - _FootpathBrightness: 0.5
+    - _FootpathTilingMul: 0.625
+    - _GlossMapScale: 1
+    - _Glossiness: 0.5
+    - _GlossyReflections: 1
+    - _GutterDropBrightness: 0.18
+    - _GutterRunBrightness: 0.61
+    - _Metallic: 0.327
+    - _Mode: 0
+    - _OcclusionStrength: 1
+    - _Parallax: 0.02
+    - _RoadBrightness: 0.7
+    - _Smoothness: 0.326
+    - _SmoothnessTextureChannel: 0
+    - _SpecularHighlights: 1
+    - _SrcBlend: 1
+    - _Tiling: 0.1
+    - _UVSec: 0
+    - _WetDarken: 0.627
+    - _WetDarkenFactor: 0.926
+    - _WetHeightCenter: 0
+    - _WetHeightRange: 0.2
+    - _WetMaxHeight: 0.31
+    - _WetMinHeight: -2.77
+    - _WetPower: 0.6
+    - _WetSmoothBoost: 0.25
+    - _WetSmoothnessBoost: 1
+    - _WetStrength: 0.17
+    - _ZWrite: 1
+    m_Colors:
+    - _Color: {r: 0.8113208, g: 0.7586275, b: 0.72330016, a: 1}
+    - _EmissionColor: {r: 0, g: 0, b: 0, a: 1}
+    - _FootpathWorldOffset: {r: 0, g: 0, b: 0, a: 0}
+  m_BuildTextureStacks: []
+  m_AllowLocking: 1

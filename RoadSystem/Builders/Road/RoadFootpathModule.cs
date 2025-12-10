@@ -12,20 +12,13 @@ public static class RoadFootpathModule
         CurbGutter curb,
         RoadAxis axis)
     {
-        var faces = new List<Vector3[]>();
-
         // Build both sides in road-local coordinates.
-        BuildSide(builder, faces, width, length, roadHeight, footpathDepth, curb, axis, isLeft: true);
-        BuildSide(builder, faces, width, length, roadHeight, footpathDepth, curb, axis, isLeft: false);
-
-        // All coordinates are already in the road's local space; no extra rotation needed
-        // because we chose alongEdge / inward vectors based on 'axis'.
-        if (faces.Count > 0)
-            builder.AddFaces(faces);
+        BuildSide(builder, width, length, roadHeight, footpathDepth, curb, axis, isLeft: true);
+        BuildSide(builder, width, length, roadHeight, footpathDepth, curb, axis, isLeft: false);
     }
 
     /// <summary>
-    /// Builds one side (left or right) footpath+curb+gutter using the same profile as FootpathModule:
+    /// Builds one side (left or right) footpath + curb + gutter using the same profile as FootpathModule:
     /// - Footpath depth = walkable area
     /// - Then skirtOut and gutterWidth push further toward the carriageway
     /// - skirtDown and gutterDepth define vertical drops
@@ -33,7 +26,6 @@ public static class RoadFootpathModule
     /// </summary>
     private static void BuildSide(
         PBMeshBuilder builder,
-        List<Vector3[]> outFaces,
         float width,
         float length,
         float roadHeight,
@@ -52,7 +44,7 @@ public static class RoadFootpathModule
         //  v: 0..footpathDepth (+ skirtOut + gutterWidth via extrusions) (toward road centre)
         //
         // This matches the intersection FootpathModule scheme where:
-        //  xL..xR = along edge, z0..z1 = depth toward roadway. :contentReference[oaicite:1]{index=1}
+        //  xL..xR = along edge, z0..z1 = depth toward roadway.
 
         float u0 = 0f;
         float u1 = length;
@@ -98,17 +90,25 @@ public static class RoadFootpathModule
             roadHeight
         );
 
-        // NOTE:
-        //  - pathBase.y is 0 (footpath surface).
-        //  - curbSkirt/gutterApron lower vertices go below 0.
-        //  - gutterSkirtToRoad ends at worldY = roadHeight; in object-local space this is just y = roadHeight
-        //    if the road's transform has no vertical offset.
+        // --- Split into semantic groups (footpath-local) -----------------------
 
-        var localFacesFootpath = new List<Vector3[]>
+        var localFootpathFaces = new List<Vector3[]>
         {
-            pathBase,
-            curbSkirt,
-            gutterApron,
+            pathBase
+        };
+
+        var localCurbFaces = new List<Vector3[]>
+        {
+            curbSkirt
+        };
+
+        var localGutterDropFaces = new List<Vector3[]>
+        {
+            gutterApron
+        };
+
+        var localGutterRunFaces = new List<Vector3[]>
+        {
             gutterSkirtToRoad
         };
 
@@ -157,30 +157,46 @@ public static class RoadFootpathModule
             }
         }
 
-        // Now map each vertex: pRoad = outerOrigin + alongDir * u + inwardDir * v  (y stays as-is).
-        var mappedFaces = new List<Vector3[]>(localFacesFootpath.Count);
-        foreach (var face in localFacesFootpath)
+        // Helper to map a set of faces from (u,v,y) to (x,y,z) in road-local space
+        List<Vector3[]> MapFaces(List<Vector3[]> src)
         {
-            var mapped = new Vector3[face.Length];
-            for (int i = 0; i < face.Length; i++)
+            var mappedFaces = new List<Vector3[]>(src.Count);
+
+            foreach (var face in src)
             {
-                float u = face[i].x;
-                float v = face[i].z;
-                float y = face[i].y;
+                var mapped = new Vector3[face.Length];
+                for (int i = 0; i < face.Length; i++)
+                {
+                    float u = face[i].x;
+                    float v = face[i].z;
+                    float y = face[i].y;
 
-                Vector3 pos = outerOrigin + alongDir * u + inwardDir * v;
-                pos.y = y;
+                    Vector3 pos = outerOrigin + alongDir * u + inwardDir * v;
+                    pos.y = y;
 
-                mapped[i] = pos;
+                    mapped[i] = pos;
+                }
+
+                // Flip winding for left side so normals point up.
+                if (isLeft)
+                    System.Array.Reverse(mapped);
+
+                mappedFaces.Add(mapped);
             }
 
-            // Flip winding for left side so normals point up.
-            if (isLeft)
-                System.Array.Reverse(mapped);
-
-            mappedFaces.Add(mapped);
+            return mappedFaces;
         }
 
-        outFaces.AddRange(mappedFaces);
+        // --- 4) Map each semantic group and submit with correct masks ----------
+
+        var mappedFootpath      = MapFaces(localFootpathFaces);
+        var mappedCurbFaces     = MapFaces(localCurbFaces);
+        var mappedGutterDrop    = MapFaces(localGutterDropFaces);
+        var mappedGutterRun     = MapFaces(localGutterRunFaces);
+
+        builder.AddFaces(mappedFootpath,   RoadSurfaceMasks.Footpath);
+        builder.AddFaces(mappedCurbFaces,  RoadSurfaceMasks.CurbFace);
+        builder.AddFaces(mappedGutterDrop, RoadSurfaceMasks.GutterDrop);
+        builder.AddFaces(mappedGutterRun,  RoadSurfaceMasks.GutterRun);
     }
 }
